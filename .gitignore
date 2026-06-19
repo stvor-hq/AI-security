@@ -1,0 +1,39 @@
+# Gitignore for Stvor Cloud
+
+# Node/Bun
+node_modules/
+.bun/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Runtime
+*.db
+*.sqlite
+*.sqlite3
+data/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.turbo/

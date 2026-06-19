@@ -1,0 +1,43 @@
+{
+  "name": "stvor-cloud",
+  "version": "0.1.0",
+  "description": "Secure Agent-to-Agent Operator Node for Hermes Hackathon — ERC-8183 Commerce Protocol + Post-Quantum Cryptography",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "start:cli": "bun src/index.ts cli",
+    "start:api": "bun src/index.ts api",
+    "dev": "bun --watch src/index.ts api",
+    "build": "bun build --outdir dist --minify src/index.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "bun test",
+    "test:commerce": "bun test tests/commerce-flow.test.ts",
+    "start:demo": "bun run src/demo.ts",
+    "install:env": "bash install.sh"
+  },
+  "keywords": [
+    "solana",
+    "web3",
+    "agent",
+    "commerce",
+    "erc8183",
+    "pqc",
+    "encryption",
+    "elizaos"
+  ],
+  "author": "Stvor Labs",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

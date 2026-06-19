@@ -1,0 +1,4 @@
+# Bun Configuration
+
+[build]
+target = "bun"
