@@ -27,11 +27,17 @@ export class WebSocketRelay implements IRelay {
   private handlers: Array<(msg: RelayMessage) => void> = [];
   private stats = { sent: 0, received: 0, latencyMs: 0 };
 
-  constructor(private readonly url: string, private readonly token: string) {}
+  constructor(
+    private readonly url: string,
+    private readonly token: string,
+    private readonly agentId = process.env.STVOR_AGENT_ID ?? ''
+  ) {}
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(`${this.url}?token=${this.token}`);
+      const params = new URLSearchParams({ token: this.token });
+      if (this.agentId) params.set('agentId', this.agentId);
+      this.ws = new WebSocket(`${this.url}?${params.toString()}`);
       this.ws.onopen = () => {
         console.log(`[WebSocketRelay] Connected to ${this.url}`);
         resolve();
@@ -81,7 +87,7 @@ export async function createRelay(): Promise<IRelay> {
   const token = process.env.STVOR_APP_TOKEN ?? '';
 
   if (relayUrl && relayUrl.startsWith('wss://')) {
-    const relay = new WebSocketRelay(relayUrl, token);
+    const relay = new WebSocketRelay(relayUrl, token, process.env.STVOR_AGENT_ID ?? '');
     await relay.connect();
     return relay;
   }

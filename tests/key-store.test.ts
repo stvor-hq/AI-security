@@ -29,8 +29,12 @@ describe('KeyStore', () => {
     const loaded = KeyStore.load();
     expect(loaded).not.toBeNull();
 
-    expect(loaded!.ik.private_key).toBe(original.ik.private_key);
-    expect(loaded!.pqc.ek).toBe(original.pqc.ek);
+    if (!loaded) {
+      throw new Error('Expected loaded keypair');
+    }
+
+    expect(loaded.ik.private_key).toBe(original.ik.private_key);
+    expect(loaded.pqc.ek).toBe(original.pqc.ek);
   });
 
   it('returns null from load when no key file exists', () => {

@@ -69,7 +69,10 @@ describe('x402 payment protocol', () => {
     const url = new URL('http://localhost/api/test');
     const result = middleware(req, url);
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(402);
+    if (!result) {
+      throw new Error('Expected 402 response');
+    }
+    expect(result.status).toBe(402);
   });
 
   it('x402Middleware returns null (proceed) when payment valid', () => {

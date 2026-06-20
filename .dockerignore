@@ -1,0 +1,14 @@
+node_modules
+.bun
+dist
+build
+coverage
+.git
+.env
+.env.local
+data
+logs
+contracts/node_modules
+contracts/artifacts
+contracts/cache
+contracts/deployments

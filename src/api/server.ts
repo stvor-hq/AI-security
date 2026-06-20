@@ -17,6 +17,11 @@ import type { INodeSettings } from '../core/types';
 import type { AgentRuntime } from '../core/runtime';
 import type { ICommercePlugin } from '../plugins/agent-commerce';
 import type { StvorTransportManager } from '../transport/pqc';
+import { verifyAgentChallenge, type AgentChallenge } from '../agent-identity';
+
+interface StoredAgentChallenge extends AgentChallenge {
+  used: boolean;
+}
 
 async function parseJSON(req: Request, maxBytes = 1_048_576): Promise<Record<string, unknown>> {
   const contentLength = Number(req.headers.get('content-length') ?? 0);
@@ -34,6 +39,7 @@ export class ApiServer {
   private transport: StvorTransportManager | null = null;
   private readonly apiKey: string;
   private server: ReturnType<typeof Bun.serve> | null = null;
+  private readonly agentChallenges = new Map<string, StoredAgentChallenge>();
 
   constructor(runtime: AgentRuntime, transport?: StvorTransportManager) {
     this.runtime = runtime;
@@ -281,6 +287,24 @@ export class ApiServer {
       return this._response(200, { success: true, session });
     }
 
+    if (method === 'GET' && path === '/api/agent/id') {
+      return this._response(200, {
+        agentId: this.settings.agentId,
+        selfAgentId: this.transport?.getAgentId() ?? null,
+        publicKey: this.transport?.getPublicKey() ?? null,
+      });
+    }
+
+    if (method === 'GET' && path === '/api/agent/public-key') {
+      if (!this.transport) {
+        return this._response(503, { error: 'Transport layer not initialized' });
+      }
+      return this._response(200, {
+        agentId: this.transport.getAgentId(),
+        publicKey: this.transport.getPublicKey(),
+      });
+    }
+
     if (method === 'GET' && path === '/api/agent/status') {
       const transportStatus = this.transport
         ? await this.transport.getStatus()
@@ -288,6 +312,7 @@ export class ApiServer {
 
       return this._response(200, {
         agentId: this.settings.agentId,
+        selfAgentId: this.transport?.getAgentId() ?? null,
         state: this.runtime.state,
         pqcEnabled: this.settings.pqcEnabled,
         uptime: process.uptime(),
@@ -299,6 +324,51 @@ export class ApiServer {
               messagesSent: transportStatus.messagesSent,
             }
           : null,
+      });
+    }
+
+    if (method === 'GET' && path === '/api/agent/challenge') {
+      const publicKey = url.searchParams.get('publicKey');
+      if (!publicKey) {
+        return this._response(400, { error: 'publicKey query parameter required' });
+      }
+      const challenge = {
+        challenge: `stvor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        publicKey,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+        createdAt: Date.now(),
+      };
+      this.agentChallenges.set(challenge.challenge, { ...challenge, used: false });
+      return this._response(200, challenge);
+    }
+
+    if (method === 'POST' && path === '/api/agent/verify-challenge') {
+      const body = await parseJSON(req) as {
+        challenge?: string;
+        signature?: string;
+        publicKey?: string;
+        agentId?: string;
+      };
+      const challenge = this.validateStringField(body.challenge ?? '', 'challenge');
+      const signature = this.validateStringField(body.signature ?? '', 'signature');
+      const publicKey = this.validateStringField(body.publicKey ?? '', 'publicKey');
+      const stored = this.agentChallenges.get(challenge);
+
+      if (!stored || stored.used || stored.expiresAt < Date.now()) {
+        return this._response(400, { error: 'Invalid or expired challenge' });
+      }
+      if (stored.publicKey !== publicKey) {
+        return this._response(400, { error: 'Challenge public key mismatch' });
+      }
+
+      const valid = verifyAgentChallenge(challenge, signature, publicKey);
+      stored.used = true;
+      this.agentChallenges.delete(challenge);
+
+      return this._response(valid ? 200 : 401, {
+        success: valid,
+        agentId: body.agentId ?? null,
+        verifiedAt: valid ? new Date().toISOString() : null,
       });
     }
 

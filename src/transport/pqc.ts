@@ -12,6 +12,7 @@ import { resolve } from 'path';
 import type { IStvorTransport, IStvorMessage, IStvorSession } from './interfaces';
 import { KeyStore } from './key-store';
 import { MockRelayClient } from './mock-relay';
+import { AgentIdentityService } from '../agent-identity';
 
 // ─── WASM init (sync, Bun/Node compatible) ───────────────────────────────────
 
@@ -183,6 +184,7 @@ export class PayloadHasher {
 export class StvorTransportManager implements IStvorTransport {
   private client: IStvorClient | null = null;
   private agentId: string;
+  private readonly selfAgentId: string;
   private appToken: string;
   private relayUrl: string;
   private keyPair: HybridKeyPair;
@@ -205,19 +207,28 @@ export class StvorTransportManager implements IStvorTransport {
     appToken: string;
     relayUrl: string;
   }) {
+    this.keyPair = this.initializeKeyPairSync();
     this.agentId = config.agentId;
+    this.selfAgentId = new AgentIdentityService(this.keyPair).getAgentId();
     this.appToken = config.appToken;
     this.relayUrl = config.relayUrl;
-    this.keyPair = this.initializeKeyPairSync();
 
     console.log(
-      `[StvorTransport] Initialized for agent: ${this.agentId} (relay: ${this.relayUrl})`,
+      `[StvorTransport] Initialized for agent: ${this.agentId} (self: ${this.selfAgentId}, relay: ${this.relayUrl})`,
     );
   }
 
   private initializeKeyPairSync(): HybridKeyPair {
     ensureWasm();
     return KeyStore.loadOrGenerateSync(() => HybridPQCTransport.generateKeyPair());
+  }
+
+  getAgentId(): string {
+    return this.selfAgentId;
+  }
+
+  getPublicKey(): string {
+    return this.keyPair.ik.public_key;
   }
 
   async connect(): Promise<void> {

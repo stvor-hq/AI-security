@@ -1,15 +1,10 @@
-version: '3.8'
+version: "3.9"
+
 services:
-  stvor-demo:
+  relay:
     build: .
-    image: stvor-cloud:demo
-    tty: true
-    stdin_open: true
-    env_file:
-      - .env
     ports:
-      - "8080:8080"
+      - "${RELAY_PORT:-8787}:8787"
     environment:
-      - NODE_ENV=production
-    command: ["bun", "start:demo"]
-    restart: "no"
+      PORT: "${RELAY_PORT:-8787}"
+      RELAY_TOKEN: "${RELAY_TOKEN:-stvor-relay-dev-token}"

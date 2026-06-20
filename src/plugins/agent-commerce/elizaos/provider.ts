@@ -16,7 +16,7 @@ function getOrCreate(runtime: IElizaRuntime): { ctx: ICommerceContext; store: IJ
     };
     contexts.set(runtime.agentId, { ctx, store });
   }
-  return contexts.get(runtime.agentId)!;
+  return contexts.get(runtime.agentId) as { ctx: ICommerceContext; store: IJobStore };
 }
 
 export const commerceProvider = {

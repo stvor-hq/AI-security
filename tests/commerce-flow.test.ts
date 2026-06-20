@@ -501,8 +501,11 @@ describe('Stvor Cloud E2E Commerce Flow', () => {
 
     console.log(`  Job State: ${evaluatedJob.state}`);
     console.log(`  Evaluation: ACCEPT`);
-    console.log(`  Completed At: ${new Date(evaluatedJob.completedAt!).toISOString()}`);
-    const cycleDuration = evaluatedJob.completedAt! - evaluatedJob.createdAt;
+    if (!evaluatedJob.completedAt) {
+      throw new Error('Expected evaluated job to have completedAt');
+    }
+    console.log(`  Completed At: ${new Date(evaluatedJob.completedAt).toISOString()}`);
+    const cycleDuration = evaluatedJob.completedAt - evaluatedJob.createdAt;
     console.log(`  Cycle Time: ${cycleDuration}ms`);
 
     expect(evaluatedJob.state).toBe('COMPLETE');

@@ -21,7 +21,10 @@ describe('MCP server', () => {
   });
 
   it('create_secure_job tool has correct schema', () => {
-    const tool = MCP_TOOLS.find(t => t.name === 'create_secure_job')!;
+    const tool = MCP_TOOLS.find((t) => t.name === 'create_secure_job');
+    if (!tool) {
+      throw new Error('create_secure_job tool not found');
+    }
     expect(tool.inputSchema.required).toContain('provider');
     expect(tool.inputSchema.required).toContain('task');
     expect(tool.inputSchema.required).toContain('budget');

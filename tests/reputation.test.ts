@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { MockReputationGate } from '../src/plugins/agent-commerce/reputation';
 
 describe('Reputation gate', () => {

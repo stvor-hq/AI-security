@@ -10,13 +10,14 @@ function getContext(runtime: IElizaRuntime): ICommerceContext {
   if (!contexts.has(runtime.agentId)) {
     const gate = new MockPqcReputationGate();
     const jobStore = new MemoryJobStore();
-    contexts.set(runtime.agentId, {
+    const ctx: ICommerceContext = {
       runtime,
       jobStore,
       reputationGate: gate,
-    });
+    };
+    contexts.set(runtime.agentId, ctx);
   }
-  return contexts.get(runtime.agentId)!;
+  return contexts.get(runtime.agentId) as ICommerceContext;
 }
 
 export const createJobAction = {

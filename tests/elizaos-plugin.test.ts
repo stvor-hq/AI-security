@@ -43,15 +43,21 @@ describe('agentCommercePlugin structure', () => {
 });
 
 describe('CREATE_SECURE_JOB action', () => {
-  const action = agentCommercePlugin.actions.find((a) => a.name === 'CREATE_SECURE_JOB')!;
+  const action = agentCommercePlugin.actions.find((a) => a.name === 'CREATE_SECURE_JOB');
 
   it('validates correctly', async () => {
+    if (!action) {
+      throw new Error('CREATE_SECURE_JOB action not found');
+    }
     const runtime = mockRuntime();
     expect(await action.validate(runtime, mockMessage('create a job for bob'))).toBe(true);
     expect(await action.validate(runtime, mockMessage('what is the weather'))).toBe(false);
   });
 
   it('creates a job and returns job ID', async () => {
+    if (!action) {
+      throw new Error('CREATE_SECURE_JOB action not found');
+    }
     const runtime = mockRuntime();
     let response: { text: string; data?: unknown } | null = null;
 
@@ -66,9 +72,12 @@ describe('CREATE_SECURE_JOB action', () => {
     );
 
     expect(response).not.toBeNull();
-    expect(response!.text).toContain('job-');
-    expect(response!.text).toContain('OPEN');
-    expect((response!.data as { status: string }).status).toBe('OPEN');
+    if (!response) {
+      throw new Error('Expected action response');
+    }
+    expect(response.text).toContain('job-');
+    expect(response.text).toContain('OPEN');
+    expect((response.data as { status: string }).status).toBe('OPEN');
   });
 });
 
@@ -76,6 +85,9 @@ describe('commerce provider', () => {
   const provider = agentCommercePlugin.providers[0];
 
   it('returns no-jobs message when empty', async () => {
+    if (!provider) {
+      throw new Error('Commerce provider not found');
+    }
     const runtime = mockRuntime('unique-agent-empty-provider');
     const result = await provider.get(runtime, mockMessage('hello', 'unique-agent-empty-provider'), {});
     expect(result).toContain('No active jobs');
@@ -86,6 +98,9 @@ describe('commerce evaluator', () => {
   const evaluator = agentCommercePlugin.evaluators[0];
 
   it('validates messages containing job IDs', async () => {
+    if (!evaluator) {
+      throw new Error('Commerce evaluator not found');
+    }
     const runtime = mockRuntime();
     expect(await evaluator.validate(runtime, mockMessage('Check job-abc123 status'))).toBe(true);
     expect(await evaluator.validate(runtime, mockMessage('Hello world'))).toBe(false);

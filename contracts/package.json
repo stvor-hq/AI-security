@@ -4,7 +4,9 @@
   "scripts": {
     "compile": "hardhat compile",
     "deploy:sepolia": "hardhat run deploy.ts --network sepolia",
-    "deploy:local": "hardhat run deploy.ts --network localhost"
+    "deploy:local": "hardhat run deploy.ts --network localhost",
+    "deploy:celo-testnet": "hardhat run scripts/deploy-testnet.ts --network celo-alfajores",
+    "demo:celo-transactions": "hardhat run scripts/demo-transactions.ts --network celo-alfajores"
   },
   "devDependencies": {
     "hardhat": "^2.22.0",
