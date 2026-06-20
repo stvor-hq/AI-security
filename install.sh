@@ -37,7 +37,7 @@ if [ ! -f "$ENV_FILE" ]; then
   echo -e "${GREEN}Creating default .env file...${RESET}"
   cat > "$ENV_FILE" <<EOF
 # Stvor Cloud demo env defaults
-STVOR_RELAY=http://localhost:4444
+STVOR_RELAY_URL=http://localhost:4444
 ALICE_TOKEN=stvor_test_alice
 BOB_TOKEN=stvor_test_bob
 CHARLIE_TOKEN=stvor_test_charlie
@@ -64,7 +64,7 @@ fi
 echo -e "${GREEN}Install complete.${RESET}"
 echo -e "Run the demo with: ${CYAN}bun start:demo${RESET}"
 
-exit 0
+
 # Stvor Cloud — Environment Setup with Stvor SDK
 # 
 # This script initializes a local development environment for the Secure Agent-to-Agent Node.

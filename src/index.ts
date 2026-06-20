@@ -17,7 +17,7 @@
 
 import { initializeSettings, validateSettings, printSettings } from './core/settings';
 import { AgentRuntime } from './core/runtime';
-import { createCommercePlugin } from './plugins/agent-commerce';
+import { createCommercePlugin, ICommercePlugin } from './plugins/agent-commerce';
 import { createCommerceTransportBridge } from './plugins/agent-commerce/lifecycle';
 import { ApiServer } from './api/server';
 import { StvorTransportManager } from './transport/pqc';
@@ -65,7 +65,8 @@ async function initializeTransport(
     console.log(`[Bootstrap] Transport connected (PQC: enabled)`);
 
     // Create event listener bridge
-    const eventBridge = createCommerceTransportBridge(transport);
+    const context = commercePlugin.getContext();
+    const eventBridge = createCommerceTransportBridge(transport, context);
     commercePlugin.registerEventListener(eventBridge);
 
     return transport;
@@ -92,7 +93,7 @@ async function runCliMode(
   runtime: AgentRuntime,
   transport: StvorTransportManager | null,
 ): Promise<void> {
-  const commerce = runtime.getPlugin('agent-commerce');
+  const commerce = runtime.getPlugin<ICommercePlugin>('agent-commerce');
   if (!commerce) {
     console.error('[CLI] Commerce plugin not loaded');
     process.exit(1);
@@ -301,3 +302,5 @@ async function main(): Promise<void> {
 
 // Run
 main().catch(console.error);
+
+export { agentCommercePlugin } from './plugins/agent-commerce/elizaos/index';

@@ -48,8 +48,9 @@ export class CyberpunkLogger {
     console.log(`${styles.magenta}${styles.bold}✦ ESCROW${styles.reset} ${styles.magenta}${msg}${styles.reset}`);
   }
 
-  static warn(msg: string) {
-    console.log(`${styles.yellow}${styles.bold}⚠ ${msg}${styles.reset}`);
+  static warn(prefixOrMsg: string, msg?: string) {
+    const output = msg !== undefined ? `${prefixOrMsg}: ${msg}` : prefixOrMsg;
+    console.log(`${styles.yellow}${styles.bold}⚠ ${output}${styles.reset}`);
   }
 
   static alert(msg: string) {

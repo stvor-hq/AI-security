@@ -1,125 +1,146 @@
-/**
- * @file Production Transport Layer (Stvor SDK Integration)
- * 
- * This module wraps the Stvor SDK to provide Signal Protocol (X3DH + Double Ratchet)
- * combined with ML-KEM-768 hybrid post-quantum encryption.
- * 
- * Key architectural decisions:
- *   - All commerce payloads (prompts, deliverables) travel through secure Stvor channels
- *   - Only SHA-256 hashes are recorded on the mock ledger (no payload exposure)
- *   - Double Ratchet ensures forward secrecy and quantum resistance
- *   - Event-driven message handling via onMessage() callbacks
- */
-
-import { createHash, timingSafeEqual } from 'crypto';
-import { IStvorTransport, IStvorMessage, IStvorSession, IPayloadHasher } from './interfaces';
+import { ml_kem768 } from '@noble/post-quantum/ml-kem';
+import { gcm } from '@noble/ciphers/aes';
+import { sha256 } from '@noble/hashes/sha256';
+import { x25519 } from '@noble/curves/ed25519';
+import { randomBytes } from '@noble/hashes/utils';
+import { IStvorTransport, IStvorMessage, IStvorSession } from './interfaces';
 import { MockRelayClient } from './mock-relay';
 
-/**
- * Mock Stvor SDK interface (in production, use actual @stvor/sdk package).
- * For development/testing, this shows the API surface we expect.
- */
+export interface KeyPair {
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
+}
+
+export interface HybridKeyPair {
+  classical: KeyPair;
+  pqc: {
+    publicKey: Uint8Array;
+    secretKey: Uint8Array;
+  };
+}
+
+export interface EncryptedPayload {
+  ciphertext: Uint8Array;
+  iv: Uint8Array;
+  classicalEphemeralPub: Uint8Array;
+  pqcCiphertext: Uint8Array;
+  tag?: Uint8Array;
+}
+
+export class HybridPQCTransport {
+  static generateKeyPair(): HybridKeyPair {
+    const classicalPriv = x25519.utils.randomPrivateKey();
+    const classicalPub = x25519.getPublicKey(classicalPriv);
+    const pqcKeys = ml_kem768.keygen();
+
+    return {
+      classical: { privateKey: classicalPriv, publicKey: classicalPub },
+      pqc: { publicKey: pqcKeys.publicKey, secretKey: pqcKeys.secretKey },
+    };
+  }
+
+  static encrypt(
+    plaintext: Uint8Array,
+    recipientClassicalPub: Uint8Array,
+    recipientPqcPub: Uint8Array,
+  ): EncryptedPayload {
+    const ephemeralPriv = x25519.utils.randomPrivateKey();
+    const ephemeralPub = x25519.getPublicKey(ephemeralPriv);
+    const classicalSecret = x25519.getSharedSecret(ephemeralPriv, recipientClassicalPub);
+
+    const { cipherText: pqcCiphertext, sharedSecret: pqcSecret } =
+      ml_kem768.encapsulate(recipientPqcPub);
+
+    const combined = new Uint8Array(classicalSecret.length + pqcSecret.length);
+    combined.set(classicalSecret, 0);
+    combined.set(pqcSecret, classicalSecret.length);
+    const hybridSecret = sha256(combined);
+
+    const iv = randomBytes(12);
+    const aes = gcm(hybridSecret, iv);
+    const ciphertext = aes.encrypt(plaintext);
+
+    return { ciphertext, iv, classicalEphemeralPub: ephemeralPub, pqcCiphertext };
+  }
+
+  static decrypt(
+    payload: EncryptedPayload,
+    recipientClassicalPriv: Uint8Array,
+    recipientPqcSecret: Uint8Array,
+  ): Uint8Array {
+    const classicalSecret = x25519.getSharedSecret(
+      recipientClassicalPriv,
+      payload.classicalEphemeralPub,
+    );
+
+    const pqcSecret = ml_kem768.decapsulate(payload.pqcCiphertext, recipientPqcSecret);
+
+    const combined = new Uint8Array(classicalSecret.length + pqcSecret.length);
+    combined.set(classicalSecret, 0);
+    combined.set(pqcSecret, classicalSecret.length);
+    const hybridSecret = sha256(combined);
+
+    const aes = gcm(hybridSecret, payload.iv);
+    return aes.decrypt(payload.ciphertext);
+  }
+}
+
+export class PayloadHasher {
+  static hash(payload: unknown): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const digest = sha256(bytes);
+    return Buffer.from(digest).toString('hex');
+  }
+
+  static verify(payload: unknown, storedHash: string): boolean {
+    return this.hash(payload) === storedHash;
+  }
+
+  static hashPayload(data: unknown): string {
+    return PayloadHasher.hash(data);
+  }
+
+  static verifyHash(data: unknown, hash: string): boolean {
+    return PayloadHasher.verify(data, hash);
+  }
+
+  hashPayload(data: unknown): string {
+    return PayloadHasher.hash(data);
+  }
+
+  verifyHash(data: unknown, hash: string): boolean {
+    return PayloadHasher.verify(data, hash);
+  }
+}
+
 interface IStvorClient {
   userId: string;
   isConnected: boolean;
-
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-
   send(
     recipientId: string,
-    content: { type: string; jobId: string; data: any },
+    content: { type: string; jobId: string; data: Record<string, unknown> },
   ): Promise<{ id: string }>;
-
   onMessage(
     callback: (msg: {
       id: string;
       from: string;
       to: string;
       timestamp: number;
-      content: any;
-    }) => void,
+      content: Record<string, unknown>;
+    }) => Promise<void>,
   ): void;
-
-  getSession(agentId: string): Promise<any | null>;
+  getSession(agentId: string): Promise<{ id: string; keyVersion: number; createdAt: number; expiresAt: number } | null>;
 }
 
-/**
- * PayloadHasher: Deterministic SHA-256 hashing for ledger attestation.
- * 
- * Purpose: Allow the mock ledger to record that a payload existed and was valid
- * without ever storing or transmitting the plaintext.
- * 
- * Used in:
- *   - Job submission: hash(deliverable) → stored on ledger
- *   - Job evaluation: hash(received_deliverable) compared against ledger
- */
-export class PayloadHasher implements IPayloadHasher {
-  /**
-   * Produce a deterministic SHA-256 hash of any payload.
-   * 
-   * Process:
-   *   1. Serialize payload to JSON
-   *   2. Hash with SHA-256
-   *   3. Return hex-encoded digest
-   */
-  hashPayload(data: any): string {
-    const json = JSON.stringify(data);
-    return createHash('sha256').update(json).digest('hex');
-  }
-
-  /**
-   * Verify that a payload matches its hash.
-   * 
-   * Returns true if hash(data) === storedHash, false otherwise.
-   * Used to detect tampering or corruption during transport.
-   */
-  verifyHash(data: any, hash: string): boolean {
-    const computed = this.hashPayload(data);
-    if (computed.length !== hash.length) {
-      return false;
-    }
-    try {
-      return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(hash, 'hex'));
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Utility: Create a hash receipt with metadata for logging.
-   */
-  createHashReceipt(data: any, label?: string): {
-    hash: string;
-    label?: string;
-    size: number;
-    timestamp: number;
-  } {
-    return {
-      hash: this.hashPayload(data),
-      label,
-      size: JSON.stringify(data).length,
-      timestamp: Date.now(),
-    };
-  }
-}
-
-/**
- * StvorTransportManager: Production transport layer.
- * 
- * Responsibilities:
- *   1. Lifecycle management (connect/disconnect)
- *   2. Secure payload delivery via Stvor relay
- *   3. Event-driven message reception
- *   4. Session tracking for commerce flows
- */
 export class StvorTransportManager implements IStvorTransport {
   private client: IStvorClient | null = null;
   private agentId: string;
   private appToken: string;
   private relayUrl: string;
   private messageHandlers: Array<(msg: IStvorMessage) => Promise<void>> = [];
-  private clientMessageHandler: ((msg: any) => Promise<void>) | null = null;
+  private clientMessageHandler: ((msg: Record<string, unknown>) => Promise<void>) | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private messageBuffer: Map<string, IStvorMessage[]> = new Map();
   private sessionCache: Map<string, IStvorSession> = new Map();
@@ -146,15 +167,6 @@ export class StvorTransportManager implements IStvorTransport {
     );
   }
 
-  /**
-   * Connect to the Stvor relay and register message handlers.
-   * 
-   * Real implementation would:
-   *   1. Authenticate with app token
-   *   2. Register agent identity
-   *   3. Start receiving messages from relay
-   *   4. Set up heartbeat/ping to keep connection alive
-   */
   async connect(): Promise<void> {
     try {
       console.log(`[StvorTransport] Connecting to relay: ${this.relayUrl || '[none]'}`);
@@ -176,7 +188,6 @@ export class StvorTransportManager implements IStvorTransport {
         return;
       }
 
-      // In production, use the actual @stvor/sdk package here.
       await this.useMockRelayClient();
       console.log(`[StvorTransport] Connected via in-process mock transport`);
     } catch (error) {
@@ -193,7 +204,6 @@ export class StvorTransportManager implements IStvorTransport {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       await fetch(this.relayUrl, {
         method: 'GET',
-        cache: 'no-store',
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -209,7 +219,7 @@ export class StvorTransportManager implements IStvorTransport {
     this.client = client as unknown as IStvorClient;
 
     await client.connect();
-    this.clientMessageHandler = async (msg: any) => {
+    this.clientMessageHandler = async (msg: Record<string, unknown>) => {
       await this._handleIncomingMessage(msg);
     };
     client.onMessage(this.clientMessageHandler);
@@ -217,9 +227,6 @@ export class StvorTransportManager implements IStvorTransport {
     this.startHeartbeat();
   }
 
-  /**
-   * Disconnect from the relay and cleanup.
-   */
   async disconnect(): Promise<void> {
     if (this.client && this.client.isConnected) {
       await this.client.disconnect();
@@ -231,23 +238,11 @@ export class StvorTransportManager implements IStvorTransport {
     console.log(`[StvorTransport] Disconnected`);
   }
 
-  /**
-   * Send a secure payload to another agent.
-   * 
-   * Data flow:
-   *   1. Stvor SDK encrypts payload via Signal Protocol + ML-KEM
-   *   2. Ciphertext sent to relay
-   *   3. Relay routes to recipient
-   *   4. Recipient decrypts via their Double Ratchet state
-   * 
-   * For ledger attestation, we compute SHA-256(payload) and pass it as metadata.
-   * This allows the mock ledger to verify state transitions without storing secrets.
-   */
   async sendSecurePayload(
     recipientId: string,
     jobId: string,
     messageType: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake',
-    payload: any,
+    payload: Record<string, unknown>,
     responseTimeoutMs: number = 5000,
   ): Promise<string> {
     if (!this.client) {
@@ -255,7 +250,7 @@ export class StvorTransportManager implements IStvorTransport {
     }
 
     const hasher = new PayloadHasher();
-    const payloadHash = hasher.hashPayload(payload);
+    const payloadHash = PayloadHasher.hash(payload);
 
     console.log(
       `[StvorTransport] Sending ${messageType} to ${recipientId} for job ${jobId}`,
@@ -296,17 +291,10 @@ export class StvorTransportManager implements IStvorTransport {
     }
   }
 
-  /**
-   * Receive and decrypt an incoming message.
-   * 
-   * The Stvor SDK handles all decryption using the Double Ratchet state.
-   * This method returns fully decrypted messages from the internal buffer.
-   */
   async receiveSecureMessage(timeoutMs: number = 5000): Promise<IStvorMessage | null> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
-      // Check all message buffers for incoming messages
       for (const [agentId, messages] of this.messageBuffer.entries()) {
         if (messages.length > 0) {
           const msg = messages.shift()!;
@@ -318,19 +306,12 @@ export class StvorTransportManager implements IStvorTransport {
         }
       }
 
-      // Wait a bit before checking again
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    return null; // Timeout
+    return null;
   }
 
-  /**
-   * Register a callback for incoming messages.
-   * 
-   * This is the primary way agents receive inbound payloads.
-   * Each callback is invoked as messages arrive from the relay.
-   */
   onMessage(callback: (msg: IStvorMessage) => Promise<void>): void {
     this.messageHandlers.push(callback);
     console.log(
@@ -338,10 +319,7 @@ export class StvorTransportManager implements IStvorTransport {
     );
   }
 
-  /**
-   * Development helper: Inject a raw message into the transport stack.
-   */
-  async injectMockMessage(rawMsg: any): Promise<void> {
+  async injectMockMessage(rawMsg: Record<string, unknown>): Promise<void> {
     if (!this.client) {
       throw new Error('Transport not connected');
     }
@@ -351,9 +329,6 @@ export class StvorTransportManager implements IStvorTransport {
     await this.clientMessageHandler(rawMsg);
   }
 
-  /**
-   * Attempt to recover a faulty session by reconnecting and refreshing state.
-   */
   private async reconnectAndSync(recipientId?: string): Promise<void> {
     console.warn(
       `[RECOVERY-ACTIVE] Reconnecting transport for agent ${this.agentId}${recipientId ? ` with peer ${recipientId}` : ''}`,
@@ -369,9 +344,6 @@ export class StvorTransportManager implements IStvorTransport {
     await this.connect();
   }
 
-  /**
-   * Start internal heartbeat monitoring.
-   */
   private startHeartbeat(): void {
     if (this.heartbeatTimer) {
       return;
@@ -384,9 +356,6 @@ export class StvorTransportManager implements IStvorTransport {
     }, 5000);
   }
 
-  /**
-   * Stop internal heartbeat monitoring.
-   */
   private stopHeartbeat(): void {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
@@ -394,30 +363,24 @@ export class StvorTransportManager implements IStvorTransport {
     }
   }
 
-  /**
-   * Internal: Handle incoming message from Stvor SDK.
-   * 
-   * Process:
-   *   1. Decrypt payload (done by Stvor SDK, we just process)
-   *   2. Extract jobId and message type
-   *   3. Buffer message for retrieval
-   *   4. Invoke all registered callbacks
-   *   5. Update Double Ratchet state counter
-   */
-  private async _handleIncomingMessage(rawMsg: any): Promise<void> {
+  private async _handleIncomingMessage(rawMsg: Record<string, unknown>): Promise<void> {
     try {
+      const content = rawMsg.content as {
+        type: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake';
+        jobId: string;
+        data: unknown;
+      };
       const msg: IStvorMessage = {
-        id: rawMsg.id || `msg-${Date.now()}`,
-        from: rawMsg.from,
-        to: rawMsg.to,
-        timestamp: rawMsg.timestamp || Date.now(),
-        content: rawMsg.content,
+        id: (rawMsg.id as string) || `msg-${Date.now()}`,
+        from: rawMsg.from as string,
+        to: rawMsg.to as string,
+        timestamp: (rawMsg.timestamp as number) || Date.now(),
+        content,
         metadata: {
-          payloadHash: new PayloadHasher().hashPayload(rawMsg.content.data),
+          payloadHash: PayloadHasher.hash(content.data),
         },
       };
 
-      // Buffer for async retrieval
       if (!this.messageBuffer.has(msg.from)) {
         this.messageBuffer.set(msg.from, []);
       }
@@ -431,7 +394,6 @@ export class StvorTransportManager implements IStvorTransport {
       buffer.push(msg);
       this.messageBuffer.set(msg.from, buffer);
 
-      // Invoke all handlers
       for (const handler of this.messageHandlers) {
         try {
           await handler(msg);
@@ -449,14 +411,6 @@ export class StvorTransportManager implements IStvorTransport {
     }
   }
 
-  /**
-   * Query the status of a crypto session between two agents.
-   * 
-   * Returns session metadata:
-   *   - Double Ratchet iteration count (number of messages)
-   *   - Session creation time and expiry
-   *   - For monitoring and debugging purposes
-   */
   async getSessionStatus(agentId: string): Promise<IStvorSession | null> {
     if (!this.client) {
       return null;
@@ -497,9 +451,6 @@ export class StvorTransportManager implements IStvorTransport {
     }
   }
 
-  /**
-   * Get current transport connection status.
-   */
   async getStatus(): Promise<{
     connected: boolean;
     agentId: string;
@@ -518,11 +469,7 @@ export class StvorTransportManager implements IStvorTransport {
     };
   }
 
-  /**
-   * Get transport statistics for monitoring.
-   */
   getStats() {
     return { ...this.stats };
   }
 }
-

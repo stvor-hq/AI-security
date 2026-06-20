@@ -473,4 +473,6 @@ bun start:cli
 
 ---
 
-**Phase 2 Complete**: All payloads travel through Stvor SDK's quantum-resistant encryption. Ledger records only hashes. Full end-to-end security achieved.
+**Phase 2**: Real hybrid PQC transport implemented using `@noble/post-quantum` (ML-KEM-768)
+and `@noble/curves` (X25519). The relay layer uses an in-process mock; production relay
+deployment is Phase 3.

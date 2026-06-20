@@ -306,5 +306,3 @@ export function createCommercePlugin(
   return new AgentCommercePlugin(runtime, transport, context);
 }
 
-export { agentCommercePlugin } from './elizaos/index';
-export { agentCommercePlugin as default } from './elizaos/index';

@@ -17,6 +17,8 @@ const LLM_INJECTION_PATTERNS = [
   /drop all restrictions/i,
   /shutdown safety/i,
   /forget your instructions/i,
+  /you are now dan/i,
+  /<\s*script/i,
   /execute arbitrary/i,
   /delete all data/i,
   /disable (?:security|guard|validation)/i,

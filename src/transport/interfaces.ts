@@ -32,7 +32,7 @@ export interface IStvorMessage {
   content: {
     type: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake';
     jobId: string;
-    data: any; // Decrypted by SDK
+    data: unknown;
   };
 
   /** Payload metadata (for routing hints) */
@@ -84,11 +84,11 @@ export interface IStvorTransport {
    * 
    * Returns the message ID sent, for tracking.
    */
-  sendSecurePayload(
+   sendSecurePayload(
     recipientId: string,
     jobId: string,
     messageType: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake',
-    payload: any,
+    payload: Record<string, unknown>,
     responseTimeoutMs?: number,
   ): Promise<string>;
 
@@ -139,12 +139,8 @@ export interface IPayloadHasher {
    * Hash any payload to produce a deterministic proof.
    * Used to record state transitions without storing secrets.
    */
-  hashPayload(data: any): string;
+  hashPayload(data: unknown): string;
 
-  /**
-   * Verify a payload against its hash.
-   * Returns true if the payload matches the stored hash.
-   */
-  verifyHash(data: any, hash: string): boolean;
+  verifyHash(data: unknown, hash: string): boolean;
 }
 

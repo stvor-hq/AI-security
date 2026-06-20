@@ -18,26 +18,16 @@ import { AgentRuntime } from '../core/runtime';
 import { ICommercePlugin } from '../plugins/agent-commerce';
 import { StvorTransportManager } from '../transport/pqc';
 
-/**
- * HTTP Server: RESTful API for agent operations.
- * 
- * Commerce Endpoints:
- *   POST   /api/jobs/create        - Create a new job
- *   POST   /api/jobs/:id/fund      - Fund a job
- *   POST   /api/jobs/:id/submit    - Submit deliverable
- *   POST   /api/jobs/:id/evaluate  - Evaluate deliverable
- *   GET    /api/jobs/:id           - Get job state
- *   GET    /api/jobs               - List jobs for agent
- * 
- * Transport Endpoints (PQC-E2EE):
- *   POST   /api/transport/send     - Send secure payload
- *   GET    /api/transport/status   - Transport connection status
- *   GET    /api/transport/session/:agentId - Get crypto session status
- * 
- * Monitoring:
- *   GET    /api/agent/status       - Node status
- *   GET    /health                 - Health check
- */
+async function parseJSON(req: Request, maxBytes = 1_048_576): Promise<Record<string, unknown>> {
+  const contentLength = Number(req.headers.get('content-length') ?? 0);
+  if (contentLength > maxBytes) {
+    throw new Error('Request body too large');
+  }
+  const text = await req.text();
+  if (text.length > maxBytes) throw new Error('Request body too large');
+  return JSON.parse(text);
+}
+
 export class ApiServer {
   private runtime: AgentRuntime;
   private settings: INodeSettings;
@@ -52,9 +42,6 @@ export class ApiServer {
     this.apiKey = this.settings.apiKey || process.env.STVOR_API_KEY || 'stvor-demo-key';
   }
 
-  /**
-   * Start the HTTP server.
-   */
   start(): void {
     const port = this.settings.port;
     this.server = Bun.serve({
@@ -76,21 +63,16 @@ export class ApiServer {
     console.log('[API Server] Stopped');
   }
 
-  /**
-   * Main request router.
-   */
   private async _handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
     const method = req.method;
 
     try {
-      // Health check
       if (path === '/health') {
         return this._response(200, { status: 'ok', agentId: this.settings.agentId });
       }
 
-      // API routes
       if (path.startsWith('/api/')) {
         return await this._handleApiRoute(method, path, req, url);
       }
@@ -103,9 +85,6 @@ export class ApiServer {
     }
   }
 
-  /**
-   * Route API requests.
-   */
   private async _handleApiRoute(
     method: string,
     path: string,
@@ -116,82 +95,103 @@ export class ApiServer {
       'agent-commerce',
     );
 
-    // ===== Commerce Endpoints =====
-
-    // POST /api/jobs/create
     if (method === 'POST' && path === '/api/jobs/create') {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
       }
-      const body = await req.json();
-      const {
-        clientAgent,
-        providerAgent,
-        taskDescription,
-        requiredAmount,
-      } = body;
+      try {
+        const body = await parseJSON(req);
+        const {
+          clientAgent,
+          providerAgent,
+          taskDescription,
+          requiredAmount,
+        } = body as Record<string, unknown>;
 
-      const job = await commerce.createJob(
-        clientAgent,
-        providerAgent,
-        taskDescription,
-        BigInt(requiredAmount),
-      );
+        const job = await commerce.createJob(
+          clientAgent as string,
+          providerAgent as string,
+          taskDescription as string,
+          BigInt(requiredAmount as string | number),
+        );
 
-      return this._response(201, { success: true, job });
+        return this._response(201, { success: true, job });
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request body' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
-    // POST /api/jobs/:id/fund
     if (method === 'POST' && path.match(/^\/api\/jobs\/[^/]+\/fund$/)) {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
       }
-      const jobId = path.split('/')[3];
-      const body = await req.json();
-      const { clientAgent, fundAmount } = body;
+      try {
+        const jobId = path.split('/')[3];
+        const body = await parseJSON(req);
+        const { clientAgent, fundAmount } = body as Record<string, unknown>;
 
-      const job = await commerce.fundJob(
-        jobId,
-        clientAgent,
-        BigInt(fundAmount),
-      );
+        const job = await commerce.fundJob(
+          jobId,
+          clientAgent as string,
+          BigInt(fundAmount as string | number),
+        );
 
-      return this._response(200, { success: true, job });
+        return this._response(200, { success: true, job });
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request body' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
-    // POST /api/jobs/:id/submit
     if (method === 'POST' && path.match(/^\/api\/jobs\/[^/]+\/submit$/)) {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
       }
-      const jobId = path.split('/')[3];
-      const body = await req.json();
-      const { providerAgent, deliverableHash } = body;
+      try {
+        const jobId = path.split('/')[3];
+        const body = await parseJSON(req);
+        const { providerAgent, deliverableHash } = body as Record<string, unknown>;
 
-      const job = await commerce.submitJob(
-        jobId,
-        providerAgent,
-        deliverableHash,
-      );
+        const job = await commerce.submitJob(
+          jobId,
+          providerAgent as string,
+          deliverableHash as string,
+        );
 
-      return this._response(200, { success: true, job });
+        return this._response(200, { success: true, job });
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request body' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
-    // POST /api/jobs/:id/evaluate
     if (method === 'POST' && path.match(/^\/api\/jobs\/[^/]+\/evaluate$/)) {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
       }
-      const jobId = path.split('/')[3];
-      const body = await req.json();
-      const { decision, reason } = body;
+      try {
+        const jobId = path.split('/')[3];
+        const body = await parseJSON(req);
+        const { decision, reason } = body as Record<string, unknown>;
 
-      const job = await commerce.evaluateJob(jobId, decision, reason);
+        const job = await commerce.evaluateJob(jobId, decision as 'ACCEPT' | 'REJECT' | 'PARTIAL', reason as string | undefined);
 
-      return this._response(200, { success: true, job });
+        return this._response(200, { success: true, job });
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request body' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
-    // GET /api/jobs/:id
     if (method === 'GET' && path.match(/^\/api\/jobs\/[^/]+$/)) {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
@@ -206,7 +206,6 @@ export class ApiServer {
       return this._response(200, { success: true, state });
     }
 
-    // GET /api/jobs (list jobs for agent)
     if (method === 'GET' && path === '/api/jobs') {
       if (!commerce) {
         return this._response(503, { error: 'Commerce plugin not loaded' });
@@ -222,34 +221,37 @@ export class ApiServer {
       return this._response(200, { success: true, jobs, count: jobs.length });
     }
 
-    // ===== Transport Endpoints =====
-
-    // POST /api/transport/send
     if (method === 'POST' && path === '/api/transport/send') {
       if (!this.transport) {
         return this._response(503, { error: 'Transport layer not initialized' });
       }
       this.requireTransportAuth(req);
-      const body = this.parseJsonBody(await req.json());
-      const recipientId = this.validateStringField(body.recipientId, 'recipientId');
-      const jobId = this.validateStringField(body.jobId, 'jobId');
-      const messageType = this.validateStringField(body.messageType, 'messageType');
-      const payload = body.payload;
-      if (!['job_prompt', 'job_deliverable', 'job_evaluation', 'handshake'].includes(messageType)) {
-        return this._response(400, { error: 'Invalid messageType' });
+      try {
+        const body = await parseJSON(req);
+        const recipientId = this.validateStringField(body.recipientId, 'recipientId');
+        const jobId = this.validateStringField(body.jobId, 'jobId');
+        const messageType = this.validateStringField(body.messageType, 'messageType');
+        const payload = body.payload;
+        if (!['job_prompt', 'job_deliverable', 'job_evaluation', 'handshake'].includes(messageType)) {
+          return this._response(400, { error: 'Invalid messageType' });
+        }
+
+        const msgId = await this.transport.sendSecurePayload(
+          recipientId,
+          jobId,
+          messageType as 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake',
+          payload as Record<string, unknown>,
+        );
+
+        return this._response(200, { success: true, messageId: msgId });
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request body' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
       }
-
-      const msgId = await this.transport.sendSecurePayload(
-        recipientId,
-        jobId,
-        messageType as any,
-        payload,
-      );
-
-      return this._response(200, { success: true, messageId: msgId });
     }
 
-    // GET /api/transport/status
     if (method === 'GET' && path === '/api/transport/status') {
       if (!this.transport) {
         return this._response(503, { error: 'Transport layer not initialized' });
@@ -259,7 +261,6 @@ export class ApiServer {
       return this._response(200, { success: true, ...status });
     }
 
-    // GET /api/transport/session/:agentId
     if (
       method === 'GET' &&
       path.match(/^\/api\/transport\/session\/[^/]+$/)
@@ -280,9 +281,6 @@ export class ApiServer {
       return this._response(200, { success: true, session });
     }
 
-    // ===== Monitoring Endpoints =====
-
-    // GET /api/agent/status
     if (method === 'GET' && path === '/api/agent/status') {
       const transportStatus = this.transport
         ? await this.transport.getStatus()
@@ -307,17 +305,7 @@ export class ApiServer {
     return this._response(404, { error: `Route not found: ${method} ${path}` });
   }
 
-  /**
-   * Helper: Format JSON response.
-   */
-  private parseJsonBody(body: any): any {
-    if (!body || typeof body !== 'object') {
-      throw new Error('Request body must be a JSON object');
-    }
-    return body;
-  }
-
-  private validateStringField(value: any, fieldName: string): string {
+  private validateStringField(value: unknown, fieldName: string): string {
     if (typeof value !== 'string' || value.trim().length === 0) {
       throw new Error(`${fieldName} is required and must be a non-empty string`);
     }
@@ -338,7 +326,7 @@ export class ApiServer {
     }
   }
 
-  private _response(status: number, body: any): Response {
+  private _response(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), {
       status,
       headers: { 'Content-Type': 'application/json' },
