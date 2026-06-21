@@ -82,7 +82,9 @@ async function createAgent(name: string, id: string): Promise<DemoAgent> {
 }
 
 async function main(): Promise<void> {
-  process.env.STVOR_KEY_PASSWORD = process.env.STVOR_KEY_PASSWORD ?? 'stvor-demo-key-password';
+  if (!process.env.STVOR_KEY_PASSWORD) {
+    console.warn('[Demo] STVOR_KEY_PASSWORD not set. KeyStore will auto-generate one.');
+  }
   const startedAt = Date.now();
   let encryptedMessages = 0;
   let escrow: EscrowReservation | null = null;

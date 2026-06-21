@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { verifyChallenge, deriveAgentIdFromPublicKey } from './agent-identity';
 import type { RelayMessage } from './transport/relay';
 
@@ -29,6 +29,11 @@ function getExpectedToken(): string {
     throw new Error('[Relay] RELAY_TOKEN is required in production mode.');
   }
   return process.env.RELAY_TOKEN ?? 'stvor-relay-dev-token';
+}
+
+function getAdminAgents(): Set<string> {
+  const raw = process.env.ADMIN_AGENTS ?? '';
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
 }
 
 function closeSocket(ws: RelaySocket, code: number, reason: string): void {
@@ -100,6 +105,11 @@ function handleRelayMessage(ws: RelaySocket, raw: RelayRawMessage): void {
     }
 
     if (message.to === '*') {
+      const adminAgents = getAdminAgents();
+      if (!adminAgents.has(agentId)) {
+        closeSocket(ws, 1008, 'Broadcast not permitted for this agent');
+        return;
+      }
       for (const client of clientsByToken) {
         if (client !== ws) {
           client.send(JSON.stringify(message));
@@ -134,7 +144,7 @@ const server = Bun.serve({
     const authHeader = req.headers.get('authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     const expectedToken = getExpectedToken();
-    if (expectedToken && token !== expectedToken) {
+    if (expectedToken && (token.length !== expectedToken.length || !timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken)))) {
       return new Response('Invalid relay token', { status: 403 });
     }
 

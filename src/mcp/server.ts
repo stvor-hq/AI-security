@@ -81,7 +81,11 @@ export async function handleMcpToolCall(
       return { jobId: job.jobId, status: job.status, createdAt: new Date().toISOString() };
     }
     case 'fund_job': {
-      const job = await commerce.fundJob(args.jobId as string, args.clientId as string, '0');
+      const amount = args.amount;
+      if (typeof amount !== 'string' || amount.trim().length === 0) {
+        throw new Error('amount is required for fund_job');
+      }
+      const job = await commerce.fundJob(args.jobId as string, args.clientId as string, amount);
       return { jobId: job.jobId, status: job.status };
     }
     case 'submit_deliverable': {

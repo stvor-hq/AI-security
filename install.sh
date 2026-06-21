@@ -37,7 +37,8 @@ if [ ! -f "$ENV_FILE" ]; then
   echo -e "${GREEN}Creating default .env file...${RESET}"
   cat > "$ENV_FILE" <<EOF
 # Stvor AI Security demo env defaults
-STVOR_RELAY_URL=http://localhost:4444
+# Use wss:// for production relay connections
+STVOR_RELAY_URL=ws://localhost:4444
 ALICE_TOKEN=stvor_test_alice
 BOB_TOKEN=stvor_test_bob
 CHARLIE_TOKEN=stvor_test_charlie
@@ -51,7 +52,7 @@ echo -e "${CYAN}Attempting to start optional mock relay (if provided by @stvor/s
 if command -v npx >/dev/null 2>&1; then
   if npx --no-install --yes @stvor/sdk --help >/dev/null 2>&1; then
     echo -e "${GREEN}Found @stvor/sdk CLI via npx — launching mock relay in background...${RESET}"
-    (npx @stvor/sdk mock-relay >/dev/null 2>&1 &) || true
+    (npx @stvor/sdk@3.5.4 mock-relay >/dev/null 2>&1 &) || true
     sleep 1
     echo -e "${GREEN}Mock relay (optional) started.${RESET}"
   else
@@ -109,7 +110,8 @@ STVOR_PQC_ENABLED=true
 STVOR_AGENT_ID=agent-$(date +%s)
 
 # Stvor SDK Configuration
-STVOR_RELAY_URL=http://localhost:4444
+# Use wss:// for production relay connections
+STVOR_RELAY_URL=ws://localhost:4444
 STVOR_APP_TOKEN=stvor_dev_test123
 
 # Optional: API configuration

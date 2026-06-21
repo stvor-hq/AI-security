@@ -26,6 +26,11 @@ const LLM_INJECTION_PATTERNS = [
   /disable (?:security|guard|validation)/i,
   /run without restrictions/i,
   /override.*policy/i,
+  /\u200b|\u200c|\u200d|\ufeff/i,
+  /base64.*decode|decode.*base64/i,
+  /eval\s*\(|exec\s*\(/i,
+  /password|secret|token|api.key|private.key/i,
+  /__import__|subprocess|os\.system|child_process/i,
 ];
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -83,12 +88,14 @@ class FileRateLimitStore implements IRateLimitStore {
 }
 
 function getRateLimitStore(): IRateLimitStore {
-  const production = process.env.STVOR_PRODUCTION_MODE === 'true' || process.env.NODE_ENV === 'production';
-  if (production) {
-    const path = process.env.STVOR_RATE_LIMIT_STORE || './data/rate-limits.json';
-    return new FileRateLimitStore(path);
+  const isTest = process.env.NODE_ENV === 'test';
+  if (isTest) {
+    return new Map() as unknown as IRateLimitStore;
   }
-  return new Map() as unknown as IRateLimitStore;
+  const path = process.env.STVOR_RATE_LIMIT_STORE || './data/rate-limits.json';
+  const store = new FileRateLimitStore(path);
+  console.log('[SecurityGuard] Persistent rate-limit store enabled (file-based). For clusters, use Redis.');
+  return store;
 }
 
 const rateLimitStore = getRateLimitStore();

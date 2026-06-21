@@ -4,10 +4,10 @@
 
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 const PORT = Number(process.env.PORT ?? 4444);
-const APP_TOKEN = process.env.STVOR_APP_TOKEN ?? '';
+const APP_TOKEN = process.env.STVOR_APP_TOKEN;
 const MAX_CONNECTIONS = Number(process.env.MAX_CONNECTIONS ?? 1000);
 const MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB
 
@@ -63,6 +63,15 @@ function hashMessage(message: string): string {
   return createHash('sha256').update(message).digest('hex');
 }
 
+function authenticateRequest(req: { headers: { [key: string]: string | string[] | undefined } }): boolean {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || typeof authHeader !== 'string') return false;
+  if (!authHeader.startsWith('Bearer ')) return false;
+  const token = authHeader.slice(7);
+  if (!APP_TOKEN || token.length !== APP_TOKEN.length) return false;
+  return timingSafeEqual(Buffer.from(token), Buffer.from(APP_TOKEN));
+}
+
 const httpServer = createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -76,6 +85,11 @@ const httpServer = createServer((req, res) => {
     return;
   }
   if (req.url === '/stats') {
+    if (!authenticateRequest(req)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       connections: clients.size,
@@ -100,14 +114,15 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  // Token auth (optional — skip if APP_TOKEN is empty)
-  if (APP_TOKEN) {
-    const url = new URL(req.url ?? '/', `http://localhost`);
-    const token = url.searchParams.get('token');
-    if (token !== APP_TOKEN) {
-      ws.close(1008, 'Unauthorized');
-      return;
-    }
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+  const token = authHeader.slice(7);
+  if (!APP_TOKEN || token.length !== APP_TOKEN.length || !timingSafeEqual(Buffer.from(token), Buffer.from(APP_TOKEN))) {
+    ws.close(1008, 'Unauthorized');
+    return;
   }
 
   let agentId: string | null = null;
@@ -127,8 +142,14 @@ wss.on('connection', (ws, req) => {
           return;
         }
 
-        // Sanitize agent ID
-        agentId = msg.from.replace(/[^a-zA-Z0-9_-]/g, '');
+        const sanitizedAgentId = msg.from.replace(/[^a-zA-Z0-9_-]/g, '');
+
+        if (clients.has(sanitizedAgentId)) {
+          ws.close(1008, 'Agent ID already registered');
+          return;
+        }
+
+        agentId = sanitizedAgentId;
 
         clients.set(agentId, {
           agentId,
@@ -180,7 +201,15 @@ wss.on('connection', (ws, req) => {
           timestamp: Date.now(),
         };
 
-        recipient.ws.send(JSON.stringify(envelope));
+        try {
+          recipient.ws.send(JSON.stringify(envelope));
+        } catch {
+          ws.send(JSON.stringify({
+            type: 'error',
+            error: 'Recipient delivery failed',
+          }));
+          return;
+        }
         recipient.messagesReceived++;
 
         const sender = clients.get(agentId);
@@ -226,8 +255,13 @@ setInterval(() => {
   }
 }, 30_000);
 
+if (!APP_TOKEN) {
+  console.error('[relay] FATAL: STVOR_APP_TOKEN is required. Refusing to start.');
+  process.exit(1);
+}
+
 httpServer.listen(PORT, () => {
   console.log(`[relay] Stvor AI Security relay listening on port ${PORT}`);
-  console.log(`[relay] Auth: ${APP_TOKEN ? 'enabled' : 'disabled (open)'}`);
+  console.log(`[relay] Auth: enabled`);
   console.log(`[relay] Max connections: ${MAX_CONNECTIONS}`);
 });

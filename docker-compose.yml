@@ -7,4 +7,6 @@ services:
       - "${RELAY_PORT:-8787}:8787"
     environment:
       PORT: "${RELAY_PORT:-8787}"
-      STVOR_APP_TOKEN: "${RELAY_TOKEN:-stvor-relay-dev-token}"
+      STVOR_APP_TOKEN: "${RELAY_TOKEN}"
+      # Pass STVOR_APP_TOKEN explicitly at runtime:
+      #   RELAY_TOKEN=your-secret docker compose up

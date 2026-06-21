@@ -3,6 +3,7 @@
 // Falls back to mock ledger if contract address is not configured.
 
 import { createHash } from 'crypto';
+import { PayloadHasher } from '../transport/pqc';
 
 export interface OnChainJob {
   jobId: string;
@@ -43,7 +44,7 @@ export function loadContractAddresses(): ContractAddresses | null {
  */
 export function computeAttestationHash(payload: unknown): string {
   const hash = createHash('sha256')
-    .update(JSON.stringify(payload))
+    .update(PayloadHasher.stableStringify(payload))
     .digest('hex');
   return '0x' + hash;
 }

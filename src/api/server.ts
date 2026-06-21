@@ -17,7 +17,7 @@ import type { INodeSettings } from '../core/types';
 import type { AgentRuntime } from '../core/runtime';
 import type { ICommercePlugin } from '../plugins/agent-commerce';
 import type { StvorTransportManager } from '../transport/pqc';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { verifyAgentChallenge, type AgentChallenge } from '../agent-identity';
@@ -61,6 +61,7 @@ class FileChallengeStore implements IChallengeStore {
 
   private persist(): void {
     if (!this.dirty) return;
+    this.cleanupExpired();
     const dir = dirname(this.filePath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const data = JSON.stringify(Object.fromEntries(this.cache.entries()));
@@ -89,6 +90,21 @@ class FileChallengeStore implements IChallengeStore {
     this.dirty = true;
     this.persist();
   }
+
+  cleanupExpired(): void {
+    const now = Date.now();
+    let removed = false;
+    for (const [key, value] of this.cache.entries()) {
+      if (value.expiresAt < now) {
+        this.cache.delete(key);
+        removed = true;
+      }
+    }
+    if (removed) {
+      this.dirty = true;
+      this.persist();
+    }
+  }
 }
 
 async function parseJSON(req: Request, maxBytes = 1_048_576): Promise<Record<string, unknown>> {
@@ -108,6 +124,7 @@ export class ApiServer {
   private readonly apiKey: string;
   private server: ReturnType<typeof Bun.serve> | null = null;
   private readonly agentChallenges: IChallengeStore;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(runtime: AgentRuntime, transport?: StvorTransportManager) {
     this.runtime = runtime;
@@ -133,6 +150,11 @@ export class ApiServer {
       const challengePath = process.env.STVOR_CHALLENGE_STORE || './data/challenges.json';
       this.agentChallenges = new FileChallengeStore(challengePath);
       console.log('[API Server] Persistent challenge store enabled (file-based). For clusters, use Redis.');
+      this.cleanupTimer = setInterval(() => {
+        if (typeof (this.agentChallenges as FileChallengeStore).cleanupExpired === 'function') {
+          (this.agentChallenges as FileChallengeStore).cleanupExpired();
+        }
+      }, 5 * 60_000);
     } else {
       this.agentChallenges = new Map() as unknown as IChallengeStore;
     }
@@ -156,6 +178,10 @@ export class ApiServer {
     }
     this.server.stop();
     this.server = null;
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     console.log('[API Server] Stopped');
   }
 
@@ -165,6 +191,10 @@ export class ApiServer {
     const method = req.method;
 
     try {
+      if (method === 'OPTIONS') {
+        return this._response(204, {});
+      }
+
       if (path === '/health') {
         return this._response(200, { status: 'ok', agentId: this.settings.agentId });
       }
@@ -179,9 +209,10 @@ if (path.startsWith('/mcp/')) {
 
     return this._response(404, { error: 'Not found' });
     } catch (error) {
+      const requestId = randomUUID();
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[API Server] Error: ${message}`);
-      return this._response(500, { error: message });
+      console.error(`[API Server] Error ${requestId}: ${message}`);
+      return this._response(500, { error: 'Internal server error', requestId });
     }
   }
 
@@ -550,15 +581,24 @@ if (path.startsWith('/mcp/')) {
       throw new Error('Authorization header required');
     }
     const token = authHeader.slice(7).trim();
-    if (token !== this.apiKey) {
+    if (token.length !== this.apiKey.length) {
+      throw new Error('Invalid API key');
+    }
+    if (!timingSafeEqual(Buffer.from(token), Buffer.from(this.apiKey))) {
       throw new Error('Invalid API key');
     }
   }
 
   private _response(status: number, body: unknown): Response {
+    const corsOrigin = process.env.STVOR_CORS_ORIGIN ?? '*';
     return new Response(JSON.stringify(body), {
       status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': corsOrigin,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      },
     });
   }
 }

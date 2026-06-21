@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { IErc8183Job, ICommerceContext, IJobStore } from './types';
-import { EvaluationDecision } from './types';
+import { EvaluationDecision, ERC8183JobState } from './types';
 
 export async function clearJobStore(jobStore: IJobStore): Promise<void> {
   await jobStore.clear();
@@ -28,7 +28,7 @@ export class ERC8183StateMachine {
       jobId,
       clientAgent,
       providerAgent,
-      state: 'OPEN',
+      state: ERC8183JobState.OPEN,
       taskDescription,
       requiredAmount,
       fundedAmount: 0n,
@@ -38,7 +38,7 @@ export class ERC8183StateMachine {
     };
 
     await ctx.jobStore.save(job);
-    console.log(`[ERC-8183] Created job ${jobId} (OPEN)`);
+    console.log(`[ERC-8183] Created job ${jobId} (${ERC8183JobState.OPEN})`);
     return job;
   }
 
@@ -52,8 +52,8 @@ export class ERC8183StateMachine {
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
     }
-    if (job.state !== 'OPEN') {
-      throw new Error(`Cannot fund job in state ${job.state}. Expected OPEN.`);
+    if (job.state !== ERC8183JobState.OPEN) {
+      throw new Error(`Cannot fund job in state ${job.state}. Expected ${ERC8183JobState.OPEN}.`);
     }
     if (job.clientAgent !== clientAgent) {
       throw new Error('Only the job creator can fund this job');
@@ -68,7 +68,7 @@ export class ERC8183StateMachine {
     job.fundedAmount = newFundedAmount;
 
     if (newFundedAmount >= job.requiredAmount) {
-      job.state = 'FUNDED';
+      job.state = ERC8183JobState.FUNDED;
     }
 
     job.updatedAt = Date.now();
@@ -90,15 +90,15 @@ export class ERC8183StateMachine {
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
     }
-    if (job.state !== 'FUNDED') {
-      throw new Error(`Cannot submit to job in state ${job.state}. Expected FUNDED.`);
+    if (job.state !== ERC8183JobState.FUNDED) {
+      throw new Error(`Cannot submit to job in state ${job.state}. Expected ${ERC8183JobState.FUNDED}.`);
     }
     if (job.providerAgent !== providerAgent) {
       throw new Error('Only the provider can submit to this job');
     }
 
     job.deliverableHash = deliverableHash;
-    job.state = 'SUBMITTED';
+    job.state = ERC8183JobState.SUBMITTED;
     job.updatedAt = Date.now();
 
     await ctx.jobStore.save(job);
@@ -116,22 +116,22 @@ export class ERC8183StateMachine {
       throw new Error(`Job ${jobId} not found`);
     }
 
-    if (job.state === 'REFUND') {
+    if (job.state === ERC8183JobState.REFUND) {
       return job;
     }
 
     if (
-      job.state !== 'OPEN' &&
-      job.state !== 'FUNDED' &&
-      job.state !== 'SUBMITTED' &&
-      job.state !== 'EXPIRED'
+      job.state !== ERC8183JobState.OPEN &&
+      job.state !== ERC8183JobState.FUNDED &&
+      job.state !== ERC8183JobState.SUBMITTED &&
+      job.state !== ERC8183JobState.EXPIRED
     ) {
       throw new Error(
-        `Cannot refund job in state ${job.state}. Expected OPEN, FUNDED, SUBMITTED, or EXPIRED.`,
+        `Cannot refund job in state ${job.state}. Expected ${ERC8183JobState.OPEN}, ${ERC8183JobState.FUNDED}, ${ERC8183JobState.SUBMITTED}, or ${ERC8183JobState.EXPIRED}.`,
       );
     }
 
-    job.state = 'REFUND';
+    job.state = ERC8183JobState.REFUND;
     job.metadata.refundReason =
       reason ?? 'Escrow refund triggered by timeout or recovery.';
     job.updatedAt = Date.now();
@@ -152,21 +152,21 @@ export class ERC8183StateMachine {
       throw new Error(`Job ${jobId} not found`);
     }
 
-    if (job.state === 'EXPIRED') {
+    if (job.state === ERC8183JobState.EXPIRED) {
       return job;
     }
 
     if (
-      job.state !== 'OPEN' &&
-      job.state !== 'FUNDED' &&
-      job.state !== 'SUBMITTED'
+      job.state !== ERC8183JobState.OPEN &&
+      job.state !== ERC8183JobState.FUNDED &&
+      job.state !== ERC8183JobState.SUBMITTED
     ) {
       throw new Error(
-        `Cannot expire job in state ${job.state}. Expected OPEN, FUNDED, or SUBMITTED.`,
+        `Cannot expire job in state ${job.state}. Expected ${ERC8183JobState.OPEN}, ${ERC8183JobState.FUNDED}, or ${ERC8183JobState.SUBMITTED}.`,
       );
     }
 
-    job.state = 'EXPIRED';
+    job.state = ERC8183JobState.EXPIRED;
     job.metadata.expirationReason = reason ?? 'Job expired due to peer timeout.';
     job.updatedAt = Date.now();
     job.completedAt = Date.now();
@@ -186,19 +186,19 @@ export class ERC8183StateMachine {
       throw new Error(`Job ${jobId} not found`);
     }
 
-    if (job.state === 'ABORTED') {
+    if (job.state === ERC8183JobState.ABORTED) {
       return job;
     }
 
     if (
-      job.state === 'COMPLETE' ||
-      job.state === 'REFUND' ||
-      job.state === 'TERMINAL'
+      job.state === ERC8183JobState.COMPLETE ||
+      job.state === ERC8183JobState.REFUND ||
+      job.state === ERC8183JobState.TERMINAL
     ) {
       throw new Error(`Cannot abort job in state ${job.state}.`);
     }
 
-    job.state = 'ABORTED';
+    job.state = ERC8183JobState.ABORTED;
     job.metadata.securityAlert = reason ?? 'Security abort triggered by validation failure.';
     job.metadata.maliciousProvider = true;
     job.updatedAt = Date.now();
@@ -219,19 +219,19 @@ export class ERC8183StateMachine {
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
     }
-    if (job.state !== 'SUBMITTED') {
-      throw new Error(`Cannot evaluate job in state ${job.state}. Expected SUBMITTED.`);
+    if (job.state !== ERC8183JobState.SUBMITTED) {
+      throw new Error(`Cannot evaluate job in state ${job.state}. Expected ${ERC8183JobState.SUBMITTED}.`);
     }
 
     if (decision === EvaluationDecision.ACCEPT) {
-      job.state = 'COMPLETE';
+      job.state = ERC8183JobState.COMPLETE;
       job.completedAt = Date.now();
     } else if (decision === EvaluationDecision.REJECT) {
-      job.state = 'REFUND';
+      job.state = ERC8183JobState.REFUND;
       job.metadata.refundReason = reason ?? 'Deliverable rejected by evaluator.';
       job.completedAt = Date.now();
     } else {
-      job.state = 'REFUND';
+      job.state = ERC8183JobState.REFUND;
       job.metadata.refundReason = reason ?? 'Partial completion requires refund.';
       job.completedAt = Date.now();
     }
@@ -245,7 +245,7 @@ export class ERC8183StateMachine {
   static async getJobState(
     ctx: ICommerceContext,
     jobId: string,
-  ): Promise<'OPEN' | 'FUNDED' | 'SUBMITTED' | 'COMPLETE' | 'REFUND' | 'ABORTED' | 'EXPIRED' | 'TERMINAL' | null> {
+  ): Promise<ERC8183JobState | null> {
     const job = await ctx.jobStore.get(jobId);
     return job?.state ?? null;
   }

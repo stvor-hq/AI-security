@@ -51,6 +51,13 @@ export interface EncryptedPayload {
   ciphertext: string;
 }
 
+export class PayloadTooDeepError extends Error {
+  constructor(depth: number) {
+    super(`Payload nesting exceeds maximum depth of ${depth}`);
+    this.name = 'PayloadTooDeepError';
+  }
+}
+
 export class PqcEncryptionError extends Error {
   constructor(
     message: string,
@@ -183,9 +190,14 @@ export class PayloadHasher {
     return PayloadHasher.verifyHash(payload, storedHash);
   }
 
-  private static stableStringify(value: unknown): string {
+  private static readonly MAX_STRINGIFY_DEPTH = 64;
+
+  static stableStringify(value: unknown): string {
     const seen = new WeakSet();
-    const helper = (val: unknown): string => {
+    const helper = (val: unknown, depth: number): string => {
+      if (depth > PayloadHasher.MAX_STRINGIFY_DEPTH) {
+        throw new PayloadTooDeepError(PayloadHasher.MAX_STRINGIFY_DEPTH);
+      }
       if (val === null || typeof val !== 'object') {
         return JSON.stringify(val);
       }
@@ -194,13 +206,13 @@ export class PayloadHasher {
       }
       seen.add(val);
       if (Array.isArray(val)) {
-        return '[' + val.map(helper).join(',') + ']';
+        return '[' + val.map(v => helper(v, depth + 1)).join(',') + ']';
       }
       const keys = Object.keys(val as Record<string, unknown>).sort();
-      const pairs = keys.map(k => JSON.stringify(k) + ': ' + helper((val as Record<string, unknown>)[k]));
+      const pairs = keys.map(k => JSON.stringify(k) + ': ' + helper((val as Record<string, unknown>)[k], depth + 1));
       return '{' + pairs.join(',') + '}';
     };
-    return helper(value);
+    return helper(value, 0);
   }
 
   static hashPayload(payload: unknown): string {
@@ -277,7 +289,10 @@ export class StvorTransportManager implements IStvorTransport {
   private peerPublicKeys: Map<string, HybridKeyPair> = new Map();
   private isMockRelay = false;
   private static readonly MAX_BUFFER_PER_AGENT = 128;
+  private static readonly MAX_RETRIES = 3;
+  private static readonly BASE_RETRY_DELAY_MS = 1000;
   private static readonly MAX_SESSION_CACHE_SIZE = 128;
+  private errorHandlers: Array<(err: Error, messageId: string, recipientId: string) => void> = [];
   private stats = {
     messagesReceived: 0,
     messagesSent: 0,
@@ -466,6 +481,20 @@ export class StvorTransportManager implements IStvorTransport {
     this.isMockRelay = true;
   }
 
+  private bufferMessage(recipientId: string, message: IStvorMessage): void {
+    const existing = this.messageBuffer.get(recipientId) ?? [];
+    if (existing.length >= StvorTransportManager.MAX_BUFFER_PER_AGENT) {
+      const removed = existing.shift();
+      if (removed) {
+        console.warn(
+          `[PQC-Transport] Buffer full for ${recipientId}, removed oldest message ${removed.id}`,
+        );
+      }
+    }
+    existing.push(message);
+    this.messageBuffer.set(recipientId, existing);
+  }
+
   async disconnect(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
@@ -535,16 +564,28 @@ export class StvorTransportManager implements IStvorTransport {
     this.stats.encryptionOps++;
 
     if (this.client && 'send' in this.client) {
-      try {
-        await (this.client as unknown as { send: (m: IStvorMessage) => Promise<unknown> }).send(message);
-      } catch (error) {
-        const eventId = `evt-${Date.now()}-${randomBytes(4).toString('hex')}`;
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.error(
-          `[PQC-Transport] Send failed agent=${this.agentId} eventId=${eventId} timestamp=${new Date().toISOString()} messageId=${messageId} error=${err.message}`,
-        );
-        this.messageBuffer.get(recipientId)?.push(message);
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < StvorTransportManager.MAX_RETRIES; attempt++) {
+        try {
+          await (this.client as unknown as { send: (m: IStvorMessage) => Promise<unknown> }).send(message);
+          this.stats.messagesSent++;
+          return messageId;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (attempt < StvorTransportManager.MAX_RETRIES - 1) {
+            const delay = StvorTransportManager.BASE_RETRY_DELAY_MS * 2 ** attempt;
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
       }
+      const eventId = `evt-${Date.now()}-${randomBytes(4).toString('hex')}`;
+      console.error(
+        `[PQC-Transport] All retries failed agent=${this.agentId} eventId=${eventId} timestamp=${new Date().toISOString()} messageId=${messageId} error=${lastError?.message}`,
+      );
+      for (const handler of this.errorHandlers) {
+        handler(lastError ?? new Error('Unknown send failure'), messageId, recipientId);
+      }
+      this.bufferMessage(recipientId, message);
     }
 
     this.stats.messagesSent++;
@@ -557,6 +598,10 @@ export class StvorTransportManager implements IStvorTransport {
 
   onMessage(callback: (msg: IStvorMessage) => Promise<void>): void {
     this.messageHandlers.push(callback);
+  }
+
+  onError(handler: (err: Error, messageId: string, recipientId: string) => void): void {
+    this.errorHandlers.push(handler);
   }
 
   async getSessionStatus(_agentId: string): Promise<IStvorSession | null> {

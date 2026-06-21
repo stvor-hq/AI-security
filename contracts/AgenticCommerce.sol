@@ -24,6 +24,8 @@ contract AgenticCommerce is Initializable, AccessControlUpgradeable, ReentrancyG
         Expired
     }
 
+    uint256 public constant MIN_JOB_DURATION = 5 minutes;
+
     struct Job {
         uint256 id;
         address client;
@@ -133,7 +135,7 @@ contract AgenticCommerce is Initializable, AccessControlUpgradeable, ReentrancyG
         string calldata description, address hook
     ) external nonReentrant returns (uint256) {
         if (evaluator == address(0)) revert ZeroAddress();
-        if (expiredAt <= block.timestamp + 5 minutes) revert ExpiryTooShort();
+        if (expiredAt <= block.timestamp + MIN_JOB_DURATION) revert ExpiryTooShort();
         if (!whitelistedHooks[hook]) revert HookNotWhitelisted();
         if (hook != address(0)) {
             if (!ERC165Checker.supportsInterface(hook, type(IACPHook).interfaceId))
@@ -208,10 +210,7 @@ contract AgenticCommerce is Initializable, AccessControlUpgradeable, ReentrancyG
     function submit(uint256 jobId, bytes32 deliverable, bytes calldata optParams) external nonReentrant {
         Job storage job = jobs[jobId];
         if (job.id == 0) revert InvalidJob();
-        if (
-            job.status != JobStatus.Funded &&
-            (job.status != JobStatus.Open || job.budget > 0)
-        ) revert WrongStatus();
+        if (job.status != JobStatus.Funded) revert WrongStatus();
         if (msg.sender != job.provider) revert Unauthorized();
 
         bytes memory data = abi.encode(msg.sender, deliverable, optParams);

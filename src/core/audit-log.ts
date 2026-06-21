@@ -1,8 +1,10 @@
 // src/core/audit-log.ts
 // Tamper-evident audit logging for Stvor AI Security operations.
 
-import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, appendFileSync, readFileSync, renameSync, statSync } from 'fs';
 import { createHash } from 'crypto';
+
+const MAX_LOG_BYTES = 10 * 1024 * 1024;
 
 function getLogDir(): string {
   return process.env.STVOR_LOG_DIR ?? './data/logs';
@@ -44,6 +46,13 @@ export function auditLog(
     const logDir = getLogDir();
     if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
 
+    const logFile = getLogFile();
+    if (existsSync(logFile) && statSync(logFile).size >= MAX_LOG_BYTES) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const rotatedPath = `${logFile}.${timestamp}`;
+      renameSync(logFile, rotatedPath);
+    }
+
     const prevHash = getLastEntryHash();
     const entry: Omit<AuditEntry, 'hash'> = {
       timestamp: new Date().toISOString(),
@@ -57,7 +66,7 @@ export function auditLog(
     const hash = getLogEntryHash(entry);
     const fullEntry: AuditEntry = { ...entry, hash };
 
-    appendFileSync(getLogFile(), JSON.stringify(fullEntry) + '\n');
+    appendFileSync(logFile, JSON.stringify(fullEntry) + '\n');
   } catch {
     // never crash on logging
   }

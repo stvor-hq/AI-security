@@ -1,12 +1,15 @@
-export type ERC8183JobState =
-  | 'OPEN'
-  | 'FUNDED'
-  | 'SUBMITTED'
-  | 'COMPLETE'
-  | 'REFUND'
-  | 'ABORTED'
-  | 'EXPIRED'
-  | 'TERMINAL';
+export enum ERC8183JobState {
+  OPEN = 'OPEN',
+  FUNDED = 'FUNDED',
+  SUBMITTED = 'SUBMITTED',
+  COMPLETE = 'COMPLETE',
+  REFUND = 'REFUND',
+  ABORTED = 'ABORTED',
+  EXPIRED = 'EXPIRED',
+  TERMINAL = 'TERMINAL',
+}
+
+export type ERC8183JobStateType = keyof typeof ERC8183JobState;
 
 export type EvaluatorFunction = (
   deliverable: string,

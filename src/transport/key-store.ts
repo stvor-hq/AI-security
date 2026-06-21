@@ -143,20 +143,7 @@ export class KeyStore {
   }
 
   static loadOrGenerateSync(generateFn: () => HybridKeyPair): HybridKeyPair {
-    const existing = KeyStore.load();
-    if (existing) {
-      console.log('[KeyStore] Loaded existing keypair from disk.');
-      return existing;
-    }
-    if (isProductionMode()) {
-      throw new Error(
-        '[Production] STVOR_KEY_PASSWORD is required in production mode. Cannot auto-generate keypair without password.',
-      );
-    }
-    console.log('[KeyStore] No keypair found. Generating new keypair...');
-    const newKeyPair = generateFn();
-    KeyStore.save(newKeyPair);
-    return newKeyPair;
+    return KeyStore.loadOrGenerate(generateFn);
   }
 
   static exists(): boolean {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'bun:test';
-import { HybridPQCTransport, PayloadHasher, ensureWasm } from '../src/transport/pqc';
+import { HybridPQCTransport, PayloadHasher, PayloadTooDeepError, ensureWasm } from '../src/transport/pqc';
 
 beforeAll(() => {
   ensureWasm();
@@ -133,5 +133,13 @@ describe('PayloadHasher', () => {
     expect(
       PayloadHasher.verifySignature({ jobId: 'job-fake' }, signed.hash, signed.signature, alice.ik.public_key),
     ).toBe(false);
+  });
+
+  it('rejects deeply nested payloads exceeding max depth', () => {
+    let deep = { a: 1 };
+    for (let i = 0; i < 100; i++) {
+      deep = { nested: deep };
+    }
+    expect(() => PayloadHasher.hashPayload(deep)).toThrow(PayloadTooDeepError);
   });
 });

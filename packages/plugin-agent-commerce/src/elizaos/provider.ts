@@ -1,21 +1,21 @@
 import type { IElizaRuntime, Memory, State } from './types';
-import type { IJobStore, ICommerceContext } from '../types';
+import type { IJobStore, ICommerceContext, ERC8183JobState } from '../types';
 import { MockPqcReputationGate } from '../hooks';
 
 const contexts = new Map<string, { ctx: ICommerceContext; store: IJobStore }>();
 
 class LocalMemoryJobStore implements IJobStore {
-  private jobs: Map<string, { jobId: string; clientAgent: string; providerAgent: string; state: 'OPEN' | 'FUNDED' | 'SUBMITTED' | 'COMPLETE' | 'REFUND' | 'ABORTED' | 'EXPIRED' | 'TERMINAL'; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }> = new Map();
+  private jobs: Map<string, { jobId: string; clientAgent: string; providerAgent: string; state: ERC8183JobState; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }> = new Map();
 
-  async save(job: { jobId: string; clientAgent: string; providerAgent: string; state: 'OPEN' | 'FUNDED' | 'SUBMITTED' | 'COMPLETE' | 'REFUND' | 'ABORTED' | 'EXPIRED' | 'TERMINAL'; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }): Promise<void> {
+  async save(job: { jobId: string; clientAgent: string; providerAgent: string; state: ERC8183JobState; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }): Promise<void> {
     this.jobs.set(job.jobId, job);
   }
 
-  async get(jobId: string): Promise<{ jobId: string; clientAgent: string; providerAgent: string; state: 'OPEN' | 'FUNDED' | 'SUBMITTED' | 'COMPLETE' | 'REFUND' | 'ABORTED' | 'EXPIRED' | 'TERMINAL'; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> } | null> {
+  async get(jobId: string): Promise<{ jobId: string; clientAgent: string; providerAgent: string; state: ERC8183JobState; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> } | null> {
     return this.jobs.get(jobId) ?? null;
   }
 
-  async listByAgent(agentId: string): Promise<{ jobId: string; clientAgent: string; providerAgent: string; state: 'OPEN' | 'FUNDED' | 'SUBMITTED' | 'COMPLETE' | 'REFUND' | 'ABORTED' | 'EXPIRED' | 'TERMINAL'; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }[]> {
+  async listByAgent(agentId: string): Promise<{ jobId: string; clientAgent: string; providerAgent: string; state: ERC8183JobState; taskDescription: string; requiredAmount: bigint; fundedAmount: bigint; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }[]> {
     return Array.from(this.jobs.values()).filter(
       (job) => job.clientAgent === agentId || job.providerAgent === agentId,
     );

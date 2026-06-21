@@ -54,8 +54,8 @@ export function printSettings(settings: INodeSettings): void {
   console.log(`├─ Port: ${settings.port}`);
   console.log(`├─ Log Level: ${settings.logLevel}`);
   console.log(`├─ Relay URL: ${settings.relayUrl}`);
-  console.log(`├─ API Key: ${settings.apiKey}`);
-  console.log(`├─ App Token: ${settings.appToken}`);
+  console.log(`├─ API Key: ${settings.apiKey ? '***' + settings.apiKey.slice(-4) : '(not set)'}`);
+  console.log(`├─ App Token: ${settings.appToken ? '***' + settings.appToken.slice(-4) : '(not set)'}`);
   console.log(`├─ Database: ${settings.dbPath}`);
   console.log(`└─ PQC Enabled: ${settings.pqcEnabled ? '✓' : '✗'}`);
 }

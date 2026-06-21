@@ -20,6 +20,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - Security Audit Fixes
+
+### Critical Security Fixes
+
+- **CRIT-1 — STVOR_APP_TOKEN mandatory**: The relay server now requires `STVOR_APP_TOKEN` to be set. If missing, the server refuses to start with a clear error message. Updated `.env.example` to reflect this requirement.
+- **CRIT-2 — Token removed from query string**: WebSocket relay token is no longer appended to the URL as `?token=...`. The token is sent exclusively via the `Authorization: Bearer <token>` header. Server-side code that read `url.searchParams` for the token has been removed. No token values are logged anywhere.
+- **CRIT-3 — Solidity submit() restricted to Funded**: `submit()` in `AgenticCommerce.sol` now only allows submission when `job.status == JobStatus.Funded`. The previous exception for `Open` jobs with `budget > 0` has been removed.
+
+### High Severity Fixes
+
+- **HIGH-1 — /stats endpoint protected**: The `/stats` HTTP endpoint now requires the same Bearer token authentication as the WebSocket connection. Requests without a valid token receive HTTP 401.
+- **HIGH-2 — Timing-safe API key comparison**: String comparisons for API keys/tokens in `src/api/server.ts` and `src/relay/server.ts` now use `crypto.timingSafeEqual()` after verifying length equality, preventing timing side-channel attacks.
+- **HIGH-3 — Rate limiting enabled in all environments**: `getRateLimitStore()` in `src/core/security.ts` now always uses the persistent `FileRateLimitStore` by default. The in-memory fallback is reserved for tests (`NODE_ENV=test`). Redis is documented as the recommended store for clustered deployments.
+- **HIGH-4 — Message retry with exponential backoff**: `StvorTransportManager.sendSecurePayload()` in `src/transport/pqc.ts` now retries failed sends up to 3 times with exponential backoff (1s, 2s, 4s). After all retries fail, an error event is emitted via a new `onError` handler. When the message buffer is full, the oldest message is evicted with a warning instead of being silently dropped.
+
+### Medium Severity Fixes
+
+- **MED-1 — agentId hijacking prevention**: The relay server checks if an `agentId` is already registered before accepting a new registration. If it exists, the connection is rejected with code 1008 and an appropriate message.
+- **MED-5 — Minimum job duration enforced**: `AgenticCommerce.sol` now defines `MIN_JOB_DURATION = 5 minutes` and enforces it in `createJob()`, rejecting jobs with an expiry too close to the current timestamp.
+
+## [Unreleased] - Security Audit Fixes (Phase 2)
+
+### Critical Security Fixes
+
+- **CRIT-6 — MockERC20.mint() access control**: `MockERC20.sol` now imports `Ownable` and restricts `mint()` to the contract owner. Deploy scripts continue to work because the deployer is the owner.
+
+### High Severity Fixes
+
+- **HIGH-8 — Recursion depth limit in stableStringify**: `PayloadHasher.stableStringify()` now accepts a `depth` parameter with a maximum of 64. Exceeding this limit throws `PayloadTooDeepError`. Added test verifying deeply nested objects (depth 100) are rejected.
+- **HIGH-9 — Token removed from Dockerfile**: `Dockerfile` no longer hardcodes `RELAY_TOKEN`. The token must be passed via environment variables at runtime. `docker-compose.yml` updated to pass `RELAY_TOKEN` from the host environment.
+- **HIGH-10 — Broadcast restricted to admin agents**: In `src/relay-server.ts`, broadcast messages (`to: "*"`) are only permitted if the sender's `agentId` is listed in the `ADMIN_AGENTS` environment variable. Unauthorized broadcast attempts are rejected with code 1008.
+- **HIGH-11 — Secrets masked in printSettings()**: `printSettings()` in `src/core/settings.ts` now redacts `apiKey` and `appToken` values, showing only the last 4 characters (or `(not set)`).
+
+### Medium Severity Fixes
+
+- **MED-2 — Expired challenge cleanup**: `FileChallengeStore` in `src/api/server.ts` now exposes `cleanupExpired()`, which removes entries with `expiresAt < Date.now()`. It is called automatically during `persist()` and on a 5-minute interval via `setInterval`.
+- **MED-3 — Generic client error responses**: The global error handler in `src/api/server.ts` now returns `{ error: "Internal server error", requestId }` to clients, with the full error logged server-side using a UUID for tracing.
+- **MED-4 — MCP fund_job amount validation**: `src/mcp/server.ts` now reads the funding `amount` from `args.amount` instead of hardcoding `'0'`. Missing amounts return a clear error.
+- **MED-6 — Audit log rotation**: `src/core/audit-log.ts` now checks file size before appending. If `audit.log` exceeds 10MB, it is rotated to a timestamped backup and a new log is started.
+- **MED-7 — Secure relay URL in install scripts**: `install.sh` and `EXECUTE.sh` now default to `ws://localhost:4444` (not `http://`) and include comments that production must use `wss://`.
+- **MED-8 — Recipient delivery failure handling**: In `src/relay/server.ts`, if `recipient.ws.send()` throws, the sender now receives `{ type: 'error', error: 'Recipient delivery failed' }` instead of the connection closing silently.
+- **MED-9 — Non-root Docker user**: `Dockerfile` now adds `USER bun`, creates `/app/data` with correct ownership, and runs the relay as a non-root user.
+- **MED-10 — Deterministic attestation hashing**: `src/contracts/on-chain.ts` `computeAttestationHash()` now uses `PayloadHasher.stableStringify()` instead of `JSON.stringify()`, ensuring deterministic hashes regardless of key order.
+- **MED-11 — Removed demo fallback password**: `src/demo-full.ts` no longer sets `STVOR_KEY_PASSWORD = 'stvor-demo-key-password'`. It now warns if the variable is missing and lets `KeyStore` handle password management.
+
+### Low Priority Fixes
+
+- **LOW-1 — Removed .env.example fallback values**: `STVOR_API_KEY` and `STVOR_APP_TOKEN` no longer have placeholder values in `.env.example`. Comments indicate they must be set explicitly.
+- **LOW-2 — KeyStore deduplication**: `src/transport/key-store.ts` - `loadOrGenerateSync()` now delegates to `loadOrGenerate()`, eliminating duplicated logic.
+- **LOW-3 — Expanded injection patterns**: `src/core/security.ts` adds 5 new patterns: unicode zero-width characters, base64 decode keywords, `eval`/`exec` detection, password/secret/token keywords, and dangerous Python/Node builtins.
+- **LOW-4 — Plugin enum consistency**: `packages/plugin-agent-commerce/` now defines and uses `ERC8183JobState` enum instead of inline string literals (`'OPEN'`, `'FUNDED'`, etc.) in `types.ts`, `state-machine.ts`, and `elizaos/provider.ts`.
+- **LOW-5 — Pinned SDK version**: `install.sh` now runs `npx @stvor/sdk@3.5.4 mock-relay` instead of an unpinned version.
+- **LOW-6 — CORS headers**: `src/api/server.ts` adds `Access-Control-Allow-Origin` (configurable via `STVOR_CORS_ORIGIN`, defaults to `*`) and handles `OPTIONS` preflight requests.
+- **LOW-7 — Timing-safe token in relay-server.ts**: `src/relay-server.ts` now uses `crypto.timingSafeEqual()` for relay token comparison, consistent with other authentication paths.
+
 ## [Unreleased] - Enterprise Production Hardening
 
 - **Cryptographic randomness**: Replaced `Math.random()` with `crypto.randomBytes()` in `src/agent-identity.ts` and `src/api/server.ts` for challenge generation.
