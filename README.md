@@ -25,7 +25,7 @@ Every existing agent commerce system has the same flaw: sensitive payloads — p
 | On-chain contract | ⚠️ Compiled | `contracts/AgenticCommerce.sol` ready, deployment pending |
 | Production relay | ⚠️ Interface ready | Set `STVOR_RELAY_URL=wss://relay.stvor.xyz` |
 | x402 blockchain signing | 🔜 Next milestone | Protocol layer complete, EIP-712 signing pending |
-| Session persistence | ⚠️ In-memory | Double Ratchet state not persisted to disk |
+| Session persistence | ✅ Production | Double Ratchet + memory persisted via HybridMemoryManager |
 
 ## What makes us different
 
@@ -141,14 +141,21 @@ The plugin exports `agentCommercePlugin` with 4 actions, 1 provider, and 2 evalu
 ## Test results
 
 ```text
-bun test tests/crypto.test.ts          8 passed
-bun test tests/commerce-flow.test.ts  12 passed
-bun test tests/elizaos-plugin.test.ts  6 passed
-bun test tests/key-store.test.ts       4 passed
-bun test tests/performance.test.ts     6 passed
-bun test tests/agent-commerce-evaluator.test.ts 4 passed
-─────────────────────────────────────────────────
-Total                                 36+ passed
+bun test tests/crypto.test.ts                    8 passed
+bun test tests/commerce-flow.test.ts            12 passed
+bun test tests/elizaos-plugin.test.ts            7 passed
+bun test tests/key-store.test.ts                 6 passed
+bun test tests/performance.test.ts               6 passed
+bun test tests/agent-commerce-evaluator.test.ts  4 passed
+bun test tests/agent-identity.test.ts            3 passed
+bun test tests/mcp.test.ts                       4 passed
+bun test tests/reputation.test.ts                7 passed
+bun test tests/x402.test.ts                      7 passed
+bun test tests/security.test.ts                  7 passed
+bun test tests/audit-log.test.ts                 3 passed
+bun test tests/memory.test.ts                    3 passed
+─────────────────────────────────────────────────────────
+Total                                           78 passed
 ```
 
 ## Roadmap
