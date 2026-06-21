@@ -67,8 +67,8 @@ async function createAgent(name: string, id: string): Promise<DemoAgent> {
     const keyPair = KeyStore.loadOrGenerateSync(() => HybridPQCTransport.generateKeyPair());
     const transport = new StvorTransportManager({
       agentId: id,
-      appToken: 'stvor-demo-token',
-      relayUrl: 'local',
+      appToken: process.env.STVOR_APP_TOKEN ?? 'stvor-demo-token',
+      relayUrl: process.env.STVOR_RELAY_URL ?? 'local',
     });
     await transport.connect();
 
@@ -83,7 +83,6 @@ async function createAgent(name: string, id: string): Promise<DemoAgent> {
 
 async function main(): Promise<void> {
   process.env.STVOR_KEY_PASSWORD = process.env.STVOR_KEY_PASSWORD ?? 'stvor-demo-key-password';
-  process.env.STVOR_ALLOW_MOCK = 'true';
   const startedAt = Date.now();
   let encryptedMessages = 0;
   let escrow: EscrowReservation | null = null;

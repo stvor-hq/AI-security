@@ -13,6 +13,7 @@ import type { IStvorTransport, IStvorMessage, IStvorSession } from './interfaces
 import { KeyStore } from './key-store';
 import { MockRelayClient } from './mock-relay';
 import { AgentIdentityService } from '../agent-identity';
+import { WebSocketRelay, type IRelay, type RelayMessage } from './relay';
 
 // ─── WASM init (sync, Bun/Node compatible) ───────────────────────────────────
 
@@ -183,6 +184,7 @@ export class PayloadHasher {
 
 export class StvorTransportManager implements IStvorTransport {
   private client: IStvorClient | null = null;
+  private relay: IRelay | null = null;
   private agentId: string;
   private readonly selfAgentId: string;
   private appToken: string;
@@ -264,7 +266,7 @@ export class StvorTransportManager implements IStvorTransport {
     try {
       console.log(`[StvorTransport] Connecting to relay: ${this.relayUrl || '[none]'}`);
 
-      const isMockRelay = !this.relayUrl || this.relayUrl === 'mock';
+      const isMockRelay = !this.relayUrl || this.relayUrl === 'mock' || this.relayUrl === 'local';
 
       if (isMockRelay) {
         this.enforceMockRelay();
@@ -275,23 +277,22 @@ export class StvorTransportManager implements IStvorTransport {
         return;
       }
 
-      const reachable = await this.probeRelayUrl(2000);
-      if (!reachable) {
-        const allowMock = this.shouldAllowMock();
-        if (!allowMock) {
-          throw new Error(
-            'Production relay URL is not reachable. Set STVOR_ALLOW_MOCK=true to allow fallback to mock relay.',
-          );
-        }
-        console.warn(
-          '[StvorTransport] Relay unavailable within 2000ms — falling back to in-process mock transport.',
-        );
-        await this.useMockRelayClient();
-        return;
-      }
-
-      await this.useMockRelayClient();
-      console.log(`[StvorTransport] Connected via in-process mock transport`);
+      const relay = new WebSocketRelay(this.relayUrl, this.appToken, this.agentId);
+      await relay.connect();
+      this.relay = relay;
+      this.isMockRelay = false;
+      this.client = {
+        send: async (message: IStvorMessage) => {
+          await relay.send(message.to, {
+            to: message.to,
+            payload: JSON.stringify(message),
+            messageId: message.id,
+          });
+          return { id: message.id };
+        },
+      };
+      relay.onMessage((message) => this.handleRelayMessage(message));
+      console.log(`[StvorTransport] Connected to production relay ${this.relayUrl}`);
     } catch (error) {
       if (error instanceof Error && error.message.includes('not configured')) {
         throw error;
@@ -309,8 +310,25 @@ export class StvorTransportManager implements IStvorTransport {
     }
   }
 
-  private async probeRelayUrl(_timeoutMs: number): Promise<boolean> {
-    return false;
+  private handleRelayMessage(message: RelayMessage): void {
+    if (!message.payload) return;
+
+    try {
+      void this.dispatchMessage(JSON.parse(message.payload) as IStvorMessage);
+    } catch {
+      // ignore malformed relay payload
+    }
+  }
+
+  private async dispatchMessage(message: IStvorMessage): Promise<void> {
+    this.stats.messagesReceived++;
+    for (const handler of this.messageHandlers) {
+      try {
+        await handler(message);
+      } catch {
+        // ignore handler errors
+      }
+    }
   }
 
   private async useMockRelayClient(): Promise<void> {
@@ -324,6 +342,8 @@ export class StvorTransportManager implements IStvorTransport {
       this.heartbeatTimer = null;
     }
     this.client = null;
+    this.relay?.disconnect();
+    this.relay = null;
     this.messageHandlers = [];
     this.sessionCache.clear();
   }
@@ -381,7 +401,7 @@ export class StvorTransportManager implements IStvorTransport {
     messagesSent: number;
   }> {
     return {
-      connected: this.isMockRelay,
+      connected: this.client !== null,
       agentId: this.agentId,
       relayUrl: this.relayUrl,
       activeSessions: this.sessionCache.size,
