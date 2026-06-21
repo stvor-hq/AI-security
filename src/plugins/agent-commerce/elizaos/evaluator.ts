@@ -1,4 +1,5 @@
 import type { IElizaRuntime, Memory, State } from './types';
+import { persistMemory } from './memory.js';
 
 const getStrictMode = (): boolean => {
   const strictMode = process.env.STVOR_STRICT_MODE;
@@ -57,7 +58,7 @@ export const commerceEvaluator = {
     const jobIds = message.content.text.match(/job-[\w-]+/gi);
     if (!jobIds || jobIds.length === 0) return;
 
-    await runtime.getMemoryManager().createMemory({
+    await persistMemory(runtime, {
       content: {
         text: `Commerce job referenced: ${jobIds.join(', ')}`,
         jobIds,

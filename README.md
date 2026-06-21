@@ -13,6 +13,20 @@
 
 Every existing agent commerce system has the same flaw: sensitive payloads — prompts, API keys, deliverables — travel in plaintext or under classical encryption that quantum computers will break. ERC-8183 defines the protocol, but not the security. Stvor Cloud adds it.
 
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| ML-KEM-768 + Double Ratchet | ✅ Production | Rust/WASM via `@stvor/web3`, 53 NIST vectors |
+| Key storage (AES-256-GCM) | ✅ Production | Encrypted at rest, scrypt KDF (N=2^17) |
+| SecurityGuard | ✅ Production | Prompt injection vectors covered |
+| ERC-8183 state machine | ✅ Production | 5 states (OPEN→FUNDED→SUBMITTED→COMPLETE/REFUND/ABORTED) |
+| ElizaOS plugin | ✅ Production | 4 actions, 1 provider, 2 evaluators |
+| On-chain contract | ⚠️ Compiled | `contracts/AgenticCommerce.sol` ready, deployment pending |
+| Production relay | ⚠️ Interface ready | Set `STVOR_RELAY_URL=wss://relay.stvor.xyz` |
+| x402 blockchain signing | 🔜 Next milestone | Protocol layer complete, EIP-712 signing pending |
+| Session persistence | ⚠️ In-memory | Double Ratchet state not persisted to disk |
+
 ## What makes us different
 
 | | Classical agent systems | Stvor Cloud |

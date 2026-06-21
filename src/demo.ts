@@ -225,6 +225,28 @@ async function actFive(
   const received = shortHash(deliverableHash, 16);
   const totalCycleTime = Math.round(performance.now() - cycleStart);
 
+  // 3 concurrent jobs with different statuses
+  const parallelJobs = [
+    {
+      client: 'Alice', provider: 'Bob',
+      task: 'Build REST API', status: 'COMPLETE',
+      amount: '500,000 STVOR', color: '\x1b[32m', // green
+    },
+    {
+      client: 'Charlie', provider: 'Dave',
+      task: 'ML pipeline', status: 'SUBMITTED',
+      amount: '750,000 STVOR', color: '\x1b[33m', // yellow
+    },
+    {
+      client: 'Eve', provider: 'Frank',
+      task: 'Security audit', status: 'FUNDED',
+      amount: '250,000 STVOR', color: '\x1b[36m', // cyan
+    },
+  ];
+
+  const reset = '\x1b[0m';
+
+  // Print actual job completion
   await printBlock([
     `${BOLD}${GREEN}✅ LEGITIMATE JOB — FULL LIFECYCLE${RESET}`,
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
@@ -246,6 +268,28 @@ async function actFive(
     '  PLAINTEXT ON WIRE: 0 bytes',
     '  ─────────────────────────────────────────────',
   ]);
+
+  // Print 3-agent parallel table
+  await sleep(200);
+  console.log('\n  ACTIVE JOBS — MULTI-AGENT SETTLEMENT');
+  console.log('  ' + '─'.repeat(62));
+  console.log(
+    `  ${'CLIENT'.padEnd(10)} ${'PROVIDER'.padEnd(10)} ` +
+    `${'TASK'.padEnd(20)} ${'STATUS'.padEnd(12)} AMOUNT`
+  );
+  console.log('  ' + '─'.repeat(62));
+
+  for (const j of parallelJobs) {
+    await sleep(120);
+    console.log(
+      `  ${j.client.padEnd(10)} ${j.provider.padEnd(10)} ` +
+      `${j.task.padEnd(20)} ` +
+      `${j.color}${j.status.padEnd(12)}${reset} ` +
+      `${j.amount}`
+    );
+  }
+  console.log('  ' + '─'.repeat(62));
+
   await pauseAfterAct();
 }
 

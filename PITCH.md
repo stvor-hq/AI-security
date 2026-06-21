@@ -33,15 +33,19 @@ SecurityGuard protects decrypted payloads before they reach an agent reasoning l
 
 ERC-8183 creates economic trust: jobs, funding, deliverable hashes, evaluation, and settlement. PQC creates information trust: the payloads that drive agent work stay confidential and authenticated in transit. One without the other is incomplete. Secure escrow without encrypted payloads still leaks the work. Encrypted transport without escrow still leaves payment and settlement trust unresolved. Stvor Cloud combines them into one agentic commerce primitive.
 
-## Judge instructions
+## What's Real (verify with `bun test`)
+- ML-KEM-768 via Rust/WASM — `bun test tests/crypto.test.ts`
+- SecurityGuard blocks prompt injection — `bun test tests/commerce-flow.test.ts`
+- ERC-8183 state machine — `bun test tests/commerce-flow.test.ts`
+- ElizaOS plugin — `bun test tests/elizaos-plugin.test.ts`
+- Session messaging — `bun test tests/commerce-flow.test.ts`
 
-```text
-┌─────────────────────────────────────────────┐
-│  To verify everything in 5 minutes:         │
-│                                             │
-│  git clone github.com/stvor-hq/cloud       │
-│  ./install.sh                               │
-│  bun start:demo          ← watch the story  │
-│  bun test                ← 23 green lights  │
-└─────────────────────────────────────────────┘
-```
+## What's In Progress
+- On-chain escrow: `contracts/AgenticCommerce.sol` compiled, Sepolia deployment pending
+- Production relay: WebSocketRelay written, relay.stvor.xyz deployment pending
+- x402 wallet signing: protocol layer complete, EIP-712 signing next
+
+## Why This Matters for elizaOS
+elizaOS agents are vulnerable to prompt injection attacks that drain real funds
+(arxiv:2503.16248). SecurityGuard + PQC transport closes this gap
+for every agent that installs @elizaos/plugin-agent-commerce.

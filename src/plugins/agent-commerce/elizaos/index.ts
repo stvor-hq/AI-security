@@ -28,4 +28,5 @@ export default agentCommercePlugin;
 export { commerceActions } from './actions';
 export { commerceProvider } from './provider';
 export { commerceEvaluator, securityEvaluator } from './evaluator';
+export { HybridMemoryManager, persistMemory } from './memory';
 export type { IElizaRuntime, Memory, State, HandlerCallback, JobSummary } from './types';

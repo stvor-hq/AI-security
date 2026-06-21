@@ -26,6 +26,10 @@ const LLM_INJECTION_PATTERNS = [
   /override.*policy/i,
 ];
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 10;
+const rateLimitState = new Map<string, { count: number; resetTime: number }>();
+
 export class SecurityGuard {
   static readonly MAX_PAYLOAD_BYTES = DEFAULT_MAX_PAYLOAD_BYTES;
 
@@ -41,6 +45,35 @@ export class SecurityGuard {
     }
 
     this.inspectValue(normalized, 'payload');
+  }
+
+  static assertBudgetSafe(budget: string): void {
+    const amount = BigInt(budget);
+    if (amount <= 0 || amount > 1_000_000_000_000n) {
+      throw new Error(`[SECURITY-ALERT] Invalid budget amount: ${budget}`);
+    }
+  }
+
+  static checkRateLimit(agentId: string): void {
+    const now = Date.now();
+    const state = rateLimitState.get(agentId);
+    
+    if (!state || now > state.resetTime) {
+      rateLimitState.set(agentId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+      return;
+    }
+    
+    if (state.count >= RATE_LIMIT_MAX_REQUESTS) {
+      throw new Error(`[SECURITY-ALERT] Rate limit exceeded for agent ${agentId}`);
+    }
+    
+    state.count++;
+  }
+
+  static assertJobIdFormat(jobId: string): void {
+    if (!/^job-[\w-]+$/.test(jobId)) {
+      throw new Error(`[SECURITY-ALERT] Invalid job ID format: ${jobId}`);
+    }
   }
 
   private static normalizePayload(payload: unknown): unknown {

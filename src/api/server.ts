@@ -79,16 +79,50 @@ export class ApiServer {
         return this._response(200, { status: 'ok', agentId: this.settings.agentId });
       }
 
-      if (path.startsWith('/api/')) {
-        return await this._handleApiRoute(method, path, req, url);
-      }
+if (path.startsWith('/mcp/')) {
+      return await this._handleMcpRoute(method, path, req);
+    }
 
-      return this._response(404, { error: 'Not found' });
+    if (path.startsWith('/api/')) {
+      return await this._handleApiRoute(method, path, req, url);
+    }
+
+    return this._response(404, { error: 'Not found' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[API Server] Error: ${message}`);
       return this._response(500, { error: message });
     }
+  }
+
+  private async _handleMcpRoute(
+    method: string,
+    path: string,
+    req: Request,
+  ): Promise<Response> {
+    if (method === 'GET' && path === '/mcp/tools') {
+      const { MCP_TOOLS, MCP_SERVER_INFO } = await import('../mcp/server.js');
+      return this._response(200, { serverInfo: MCP_SERVER_INFO, tools: MCP_TOOLS });
+    }
+
+    if (method === 'POST' && path === '/mcp/call') {
+      const commerce = this.runtime.getPlugin<ICommercePlugin>('agent-commerce');
+      const { handleMcpToolCall } = await import('../mcp/server.js');
+      const body = await parseJSON(req) as { tool: string; args: Record<string, unknown> };
+      try {
+        const result = await handleMcpToolCall(body.tool, body.args ?? {}, commerce as unknown as {
+          createJob: (a: { clientAgent: string; providerAgent: string; taskDescription: string; requiredAmount: string | bigint; }) => Promise<{ jobId: string; status: string }>;
+          fundJob: (a: string, b: string, c: string | bigint) => Promise<{ jobId: string; status: string }>;
+          submitJob: (a: string, b: string, c: string) => Promise<{ jobId: string; status: string }>;
+          getJobState: (a: string) => Promise<unknown>;
+        });
+        return this._response(200, { result });
+      } catch (err) {
+        return this._response(400, { error: (err as Error).message });
+      }
+    }
+
+    return this._response(404, { error: `MCP route not found: ${method} ${path}` });
   }
 
   private async _handleApiRoute(
@@ -394,27 +428,6 @@ export class ApiServer {
       const { generate402Response } = await import('../x402/index.js');
       const info = generate402Response('/api/x402/deliverable', '1000000000000000', 'Demo');
       return this._response(200, info);
-    }
-
-    if (method === 'GET' && path === '/mcp/tools') {
-      const { MCP_TOOLS, MCP_SERVER_INFO } = await import('../mcp/server.js');
-      return this._response(200, { serverInfo: MCP_SERVER_INFO, tools: MCP_TOOLS });
-    }
-
-    if (method === 'POST' && path === '/mcp/call') {
-      const { handleMcpToolCall } = await import('../mcp/server.js');
-      const body = await parseJSON(req) as { tool: string; args: Record<string, unknown> };
-      try {
-        const result = await handleMcpToolCall(body.tool, body.args ?? {}, commerce as unknown as {
-          createJob: (a: { clientAgent: string; providerAgent: string; taskDescription: string; requiredAmount: string | bigint; }) => Promise<{ jobId: string; status: string }>;
-          fundJob: (a: string, b: string, c: string | bigint) => Promise<{ jobId: string; status: string }>;
-          submitJob: (a: string, b: string, c: string) => Promise<{ jobId: string; status: string }>;
-          getJobState: (a: string) => Promise<unknown>;
-        });
-        return this._response(200, { result });
-      } catch (err) {
-        return this._response(400, { error: (err as Error).message });
-      }
     }
 
     return this._response(404, { error: `Route not found: ${method} ${path}` });
