@@ -37,7 +37,7 @@ Agents process sensitive data including API keys, credentials, and private infor
 
 **Strict Mode (`STVOR_STRICT_MODE=true`)**
 - Blocks all non-PQC encrypted messages
-- Requires `encrypted: true` AND `pqcSignature` AND encryption metadata containing "ml-kem", "pqc", "double ratchet", or "aes-256-gcm"
+- Requires `content.pqcEncrypted === true`
 - Throws error with `[SECURITY-GUARD]` prefix if validation fails
 
 **Non-Strict Mode**

@@ -368,6 +368,9 @@ export class StvorTransportManager implements IStvorTransport {
         type: messageType,
         jobId,
         data: payload,
+        encrypted: true,
+        pqcEncrypted: true,
+        encryption: 'ML-KEM-768 + Double Ratchet + AES-256-GCM',
       },
     };
 

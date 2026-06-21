@@ -33,6 +33,10 @@ export interface IStvorMessage {
     type: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake';
     jobId: string;
     data: unknown;
+    encrypted?: boolean;
+    pqcEncrypted?: boolean;
+    encryption?: string;
+    [key: string]: unknown;
   };
 
   /** Payload metadata (for routing hints) */

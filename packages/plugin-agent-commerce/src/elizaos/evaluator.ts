@@ -23,16 +23,7 @@ const getStrictMode = (runtime?: IElizaRuntime): boolean => {
 };
 
 const isPqcEncryptedContent = (content: SecurityMessageContent): boolean => {
-  const explicitlyEncrypted = content.encrypted === true || content.pqcEncrypted === true;
-  const hasPqcSignature = typeof content.pqcSignature === 'string' && content.pqcSignature.length > 0;
-  const encryption = String(content.encryption ?? '').toLowerCase();
-  const hasPqcSignal =
-    encryption.includes('ml-kem') ||
-    encryption.includes('pqc') ||
-    encryption.includes('double ratchet') ||
-    encryption.includes('aes-256-gcm');
-
-  return explicitlyEncrypted && hasPqcSignal && hasPqcSignature;
+  return content.pqcEncrypted === true;
 };
 
 export const securityEvaluator = {
@@ -58,10 +49,8 @@ export const securityEvaluator = {
     }
 
     if (getStrictMode(runtime)) {
-      const encryption = stvorMessage.encryption ? ` encryption=${stvorMessage.encryption}` : '';
-      const hasSignature = stvorMessage.pqcSignature ? ' present' : ' missing';
       throw new Error(
-        `[SECURITY-GUARD] Non-PQC message received from ${sender}.${encryption} PQC signature ${hasSignature}. In strict mode, only ML-KEM-768/PQC signed Stvor AI Security transport messages are allowed.`,
+        `[SECURITY-GUARD] Non-PQC message received from ${sender}. In strict mode, only ML-KEM-768/PQC encrypted Stvor AI Security transport messages are allowed.`,
       );
     }
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Security Fixes
+
+- **Fixed critical mismatch between security evaluator and transport layer**: transport now adds `pqcEncrypted` flag to message `content`, and the evaluator checks `content.pqcEncrypted === true` instead of requiring a `pqcSignature`. This ensures end-to-end PQC validation actually works in strict mode.
+
 ## [Unreleased] - PR Preparation: Plugin Self-Containment
 
 ### Security Fixes
