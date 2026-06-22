@@ -25,12 +25,12 @@ import {
   createCommercePlugin,
   MemoryJobStore,
   type ICommercePlugin,
-} from '../src/plugins/agent-commerce';
-import { clearJobStore } from '../src/plugins/agent-commerce/state-machine';
-import { createCommerceTransportBridge } from '../src/plugins/agent-commerce/lifecycle';
+} from '../packages/plugin-agent-commerce/src';
+import { clearJobStore } from '../packages/plugin-agent-commerce/src/state-machine';
+import { createCommerceTransportBridge } from '../packages/plugin-agent-commerce/src/lifecycle';
 import { StvorTransportManager, PayloadHasher, HybridPQCTransport, type EncryptedPayload } from '../src/transport/pqc';
 import type { IStvorMessage } from '../src/transport/interfaces';
-import type { IPqcReputationGateHook } from '../src/plugins/agent-commerce/types';
+import type { IPqcReputationGateHook } from '../packages/plugin-agent-commerce/src';
 import { ApiServer } from '../src/api/server';
 
 /**

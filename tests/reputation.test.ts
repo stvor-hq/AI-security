@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { MockReputationGate } from '../src/plugins/agent-commerce/reputation';
+import { MockReputationGate } from '../packages/plugin-agent-commerce/src';
 
 describe('Reputation gate', () => {
   it('returns default score for unknown agent', async () => {

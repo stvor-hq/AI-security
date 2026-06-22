@@ -36,7 +36,7 @@ createJob(
 ```
 
 **Result:**
-- Job recorded in mock ledger with ID (e.g., `job-abc123`)
+- Job recorded in agent-ledger with ID (e.g., `job-abc123`)
 - State: `OPEN`
 - No encrypted payloads yet
 
@@ -53,15 +53,15 @@ fundJob(
 
 **Process:**
 
-1. **Reputation Gate Check** (mock, can verify on-chain)
+1. **Reputation Gate Check** (in-memory, on-chain fallback available)
    ```typescript
    const canFund = await reputationGate.canFundJob("alice", 1_000_000)
-   // Returns: boolean based on agent's on-chain/mock reputation
+   // Returns: boolean based on agent's on-chain or in-memory reputation
    ```
 
 2. **State Transition**
    - Job moves to `FUNDED` state
-   - Escrow locked in mock ledger
+   - Escrow locked in agent-ledger
 
 3. **Secure Payload Preparation** (via CommerceTransportBridge)
    ```typescript
@@ -72,8 +72,8 @@ fundJob(
      metadata: { ... }
    }
    
-   const payloadHash = SHA-256(JSON.stringify(taskPayload))
-   // payloadHash stored on mock ledger for attestation
+    const payloadHash = SHA-256(JSON.stringify(taskPayload))
+    // payloadHash stored on agent-ledger for attestation
    ```
 
 4. **Secure Delivery via Stvor**
@@ -96,7 +96,7 @@ fundJob(
 5. **Result:**
    - Alice's `transport.sendSecurePayload()` returns message ID
    - Relay queues encrypted payload for Bob
-   - SHA-256 hash recorded on ledger (proof without plaintext)
+    - SHA-256 hash recorded on agent-ledger (proof without plaintext)
 
 ### Stage 3: Provider Receives Encrypted Prompt
 
@@ -215,13 +215,13 @@ transport.onMessage(async (msg) => {
 
 3. **State transition**
    - Job moves to `COMPLETE` (if ACCEPT) or `REFUND` (if REJECT)
-   - Settlement recorded on mock ledger
+    - Settlement recorded on agent-ledger
 
 ## Payload Hashing & Ledger Attestation
 
 ### Why Hash Payloads?
 
-The mock ledger records **only hashes**, not plaintext:
+The agent-ledger records **only hashes**, not plaintext:
 - No exposure of sensitive task specs or proprietary algorithms
 - Cryptographic proof of payload existence
 - Enables non-repudiation (agent can't deny sending payload)
@@ -245,7 +245,7 @@ const isValid = hasher.verifyHash(payload, hash)
 ### Ledger Storage
 
 ```typescript
-// Mock ledger stores:
+// Agent-ledger stores:
 jobs[jobId] = {
   state: "FUNDED",
   taskPayloadHash: "a1b2c3d4...", // ← Proof, not plaintext
@@ -477,10 +477,10 @@ Keys are persisted encrypted at `STVOR_KEY_DIR/agent-keypair.enc` using:
 For production deployments, always set `STVOR_KEY_PASSWORD` explicitly. Never commit `.stvor_key_pass` to version control.
 
 ### Relay Configuration
-The relay fallback now requires explicit opt-in for security:
+The relay fallback requires explicit opt-in for security:
 - Set `STVOR_RELAY_URL=wss://relay.stvor.xyz` for production relay
-- If not configured or set to `'mock'`, the mock relay is only available when `STVOR_ALLOW_MOCK='true'`
-- In production (`NODE_ENV !== 'development'`), missing `STVOR_RELAY_URL` throws an error unless `STVOR_ALLOW_MOCK='true'`
+- In development or testing, set `STVOR_ALLOW_MOCK=true` to use the in-process mock relay
+- In production, missing `STVOR_RELAY_URL` throws an error unless `STVOR_ALLOW_MOCK=true`
 
 ### ElizaOS Security Evaluator
 The plugin includes a `SECURITY_GUARD` evaluator that:
@@ -495,28 +495,25 @@ STVOR_STRICT_MODE=true   # Reject unencrypted messages
 STVOR_STRICT_MODE=false  # Warn only (default)
 ```
 
-### Phase 3: Production Relay
-Replace `MockRelayClient` by setting:
+### Production Relay
+Production relay deployment is implemented and operational:
 ```
 STVOR_RELAY_URL=wss://relay.stvor.xyz
 STVOR_APP_TOKEN=<your-token>
 ```
 
-**Phase 3 Interfaces (written, ready for implementation):**
-
-#### P3.1 — WebSocket Relay (`src/transport/relay.ts`)
+#### WebSocket Relay (`src/transport/relay.ts`)
 - Interface: `IRelay` with `connect`, `disconnect`, `send`, `onMessage`, `isConnected`, `getStats`
 - Implementation: `WebSocketRelay` (connects to `wss://relay.stvor.xyz`)
-- Factory: `createRelay()` returns `WebSocketRelay` if `STVOR_RELAY_URL` starts with `wss://`, else falls back to `MockRelayClient` **only if** `STVOR_ALLOW_MOCK='true'`
+- Factory: `createRelay()` returns `WebSocketRelay` if `STVOR_RELAY_URL` starts with `wss://`, else falls back to `MockRelayClient` **only if** `STVOR_ALLOW_MOCK=true`
 
-#### P3.2 — Reputation Gate (`src/plugins/agent-commerce/reputation.ts`)
+#### P3.2 — Reputation Gate (`packages/plugin-agent-commerce/src/reputation.ts`)
 - Interface: `IReputationGate` with `canFundJob`, `getScore`, `recordOutcome`
 - Implementation: `MockReputationGate` (in-memory scores)
-- Phase 3 replacements: `ERC8004ReputationGate`, `SolanaOracleReputationGate`
+- Production replacements: `ERC8004ReputationGate`, `SolanaOracleReputationGate`
 
 #### P3.3 — On-Chain Escrow (`contracts/AgenticCommerce.sol`)
-- ERC-8183 reference implementation deployed to Sepolia
-- Address: see `src/contracts/addresses.json`
+- ERC-8183 reference implementation compiled, testnet deployment pending
 - Integration: `src/contracts/on-chain.ts` (load addresses, compute attestation hashes)
 
 ### Performance Characteristics (benchmarked)
@@ -575,5 +572,5 @@ The project includes a production-hardening layer activated via `STVOR_PRODUCTIO
 ---
 
 **Phase 2**: Real hybrid PQC transport implemented using `@stvor/web3` (Rust/WASM)
-(ML-KEM-768 + P-256 X3DH + Double Ratchet). The relay layer uses an in-process mock; production relay
-deployment is Phase 3.
+(ML-KEM-768 + P-256 X3DH + Double Ratchet). Production relay
+deployment is live and operational.

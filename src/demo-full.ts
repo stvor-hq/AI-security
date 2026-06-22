@@ -1,8 +1,8 @@
 import { join } from 'path';
 import { KeyStore } from './transport/key-store';
 import { HybridPQCTransport, StvorTransportManager, type HybridKeyPair } from './transport/pqc';
-import { AgentCommercePlugin, MemoryJobStore } from './plugins/agent-commerce';
-import { MockPqcReputationGate } from './plugins/agent-commerce/hooks';
+import { AgentCommercePlugin, MemoryJobStore } from '../packages/plugin-agent-commerce/src';
+import { MockPqcReputationGate } from '../packages/plugin-agent-commerce/src';
 import { PayloadHasher } from './transport/pqc';
 import {
   generateMockPaymentHeader,

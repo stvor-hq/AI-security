@@ -17,9 +17,9 @@
 
 import { initializeSettings, validateSettings, printSettings } from './core/settings';
 import { AgentRuntime } from './core/runtime';
-import type { ICommercePlugin } from './plugins/agent-commerce';
-import { createCommercePlugin } from './plugins/agent-commerce';
-import { createCommerceTransportBridge } from './plugins/agent-commerce/lifecycle';
+import type { ICommercePlugin } from '../packages/plugin-agent-commerce/src';
+import { createCommercePlugin } from '../packages/plugin-agent-commerce/src';
+import { createCommerceTransportBridge } from '../packages/plugin-agent-commerce/src/lifecycle';
 import { ApiServer } from './api/server';
 import { StvorTransportManager } from './transport/pqc';
 import readline from 'readline';
@@ -304,4 +304,4 @@ async function main(): Promise<void> {
 // Run
 main().catch(console.error);
 
-export { agentCommercePlugin } from './plugins/agent-commerce/elizaos/index';
+export { agentCommercePlugin } from '../packages/plugin-agent-commerce/src/elizaos/index';

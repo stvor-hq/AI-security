@@ -63,6 +63,9 @@ export class ERC8183StateMachine {
     if (!canFund) {
       throw new Error(`Reputation gate denied funding for agent ${clientAgent}`);
     }
+    if (fundAmount <= 0n) {
+      throw new Error('Fund amount must be greater than 0');
+    }
 
     const newFundedAmount = job.fundedAmount + fundAmount;
     job.fundedAmount = newFundedAmount;
@@ -225,6 +228,7 @@ export class ERC8183StateMachine {
 
     if (decision === EvaluationDecision.ACCEPT) {
       job.state = ERC8183JobState.COMPLETE;
+      job.metadata.evaluationReason = reason ?? 'Deliverable accepted by evaluator.';
       job.completedAt = Date.now();
     } else if (decision === EvaluationDecision.REJECT) {
       job.state = ERC8183JobState.REFUND;

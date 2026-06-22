@@ -15,7 +15,7 @@
 
 import type { INodeSettings } from '../core/types';
 import type { AgentRuntime } from '../core/runtime';
-import type { ICommercePlugin } from '../plugins/agent-commerce';
+import type { ICommercePlugin } from '../../packages/plugin-agent-commerce/src/index';
 import type { StvorTransportManager } from '../transport/pqc';
 import { randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';

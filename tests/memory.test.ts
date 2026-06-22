@@ -2,7 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import {
   HybridMemoryManager,
   persistMemory,
-} from '../src/plugins/agent-commerce/elizaos/memory';
+} from '../packages/plugin-agent-commerce/src/elizaos/memory';
 import { rmSync, existsSync } from 'fs';
 
 describe('HybridMemoryManager', () => {

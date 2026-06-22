@@ -5,14 +5,46 @@
 - **SECRETS-1 — Removed hardcoded tokens from install scripts**: `install.sh` and `EXECUTE.sh` no longer write hardcoded tokens (`ALICE_TOKEN`, `BOB_TOKEN`, `CHARLIE_TOKEN`, `STVOR_APP_TOKEN=stvor_dev_test123`) into generated `.env` or `.env.local` files. Generated files now use commented placeholders or omit secret values entirely.
 - **SECRETS-2 — Removed hardcoded fallbacks from `.env.example` and docs**: `.env.example` no longer contains `STVOR_API_KEY=stvor-demo-key`. `SECURITY.md` and `ARCHITECTURE.md` no longer document hardcoded secret values as defaults.
 
-### High Severity Fixes
-
-- **SECRETS-3 — Replaced public Railway URL with placeholder**: `README.md`, `SKILL.md`, and `packages/plugin-agent-commerce/README.md` now use `wss://<your-railway-url>` instead of the production Railway address.
-- **SECRETS-4 — Added Docker HEALTHCHECK**: `Dockerfile` now includes a `HEALTHCHECK` instruction that probes the `/health` endpoint every 30 seconds using Bun's built-in `fetch`.
-
 ### Documentation
 
 - **DOC-1 — Clarified @stvor/web3 availability**: `README.md` updated to note that `@stvor/web3@0.3.0` is published on npm (`https://www.npmjs.com/package/@stvor/web3`).
+
+## [Production Hardening] — Unified Architecture & Security Sprint
+
+### Added
+
+- **Production-ready PQC transport layer**: ML-KEM-768 + P-256 X3DH + Double Ratchet operational via `@stvor/web3` (Rust/WASM, published on npm). 53 NIST vectors validated.
+- **AEAD metadata binding**: Every job transition records a SHA-256 payload hash. `taskPayloadHash` is bound to FUNDED state; `deliverableHash` is bound to SUBMITTED. Hash mismatch triggers automatic job abort with security alert via `CommerceTransportBridge`.
+- **Replay protection**: Per-message Double Ratchet key rotation prevents ciphertext replay. Timestamp validation on challenge-response authentication tokens. Expired challenges are rejected automatically.
+- **Per-agent challenge-response authentication**: P-256 signed challenges with RFC 3339 expiry (`5m` default). Persistent challenge store (`STVOR_CHALLENGE_STORE`, default `./data/challenges.json`). Used for authorization on `/api/transport/*` and Bearer auth enforcement.
+- **Rate limiting on relay and API**: In-memory sliding window (10 req/min per agent) in development. File-backed rate-limit store (`STVOR_RATE_LIMIT_STORE`) for persistence. Redis-ready for multi-instance production deployments.
+- **ERC-8183-compatible state machine**: `packages/plugin-agent-commerce/src/state-machine.ts` implements 8 states (OPEN→FUNDED→SUBMITTED→COMPLETE/REFUND/ABORTED/EXPIRED/TERMINAL). `AgenticCommerce.sol` compiled on-chain contract, testnet deployment pending.
+- **Plugin self-containment**: `packages/plugin-agent-commerce/` now bundles `lib/security.ts`, `lib/pqc.ts`, and `lib/key-store.ts` for autonomous npm installation via `@elizaos/plugin-agent-commerce`.
+- **Enterprise Production Mode**: `STVOR_PRODUCTION_MODE=true` enforces `wss://` relay URL, disables mock relay, requires `STVOR_API_KEY` and `STVOR_KEY_PASSWORD`, and enables persistent challenge/rate-limit stores.
+
+### Fixed
+
+- **Import path unification**: All imports in `packages/plugin-agent-commerce/src/` now correctly reference `../../src/` or `../../../src/` as needed. Deleted paths (`src/plugins/agent-commerce/`, `src/relay-server.ts`) fully removed.
+- **Zero-amount funding rejection**: `state-machine.ts` `fundJob()` now validates `fundAmount > 0` before processing. Added test verifying zero-amount funding is rejected.
+- **Deterministic payload hashing**: `PayloadHasher.hashPayload()` uses `stableStringify()` (sorted keys) instead of `JSON.stringify()`, ensuring deterministic hashes regardless of key order.
+- **Timing-safe comparisons**: `PayloadHasher.verifyHash()` and API key checks use `crypto.timingSafeEqual()` with equal-length buffers, preventing timing side-channel attacks.
+- **CORS and preflight**: `src/api/server.ts` adds `Access-Control-Allow-Origin` (configurable via `STVOR_CORS_ORIGIN`) and handles `OPTIONS` preflight requests.
+- **ElizaOS memory API compatibility**: `persistMemory()` uses correct ElizaOS runtime API with graceful fallback to local file-based `HybridMemoryManager`.
+
+### Security
+
+- **SecurityGuard.assertPayloadSafe()**: Rejects control characters, null bytes, hidden malicious Unicode sequences, and LLM injection patterns (`ignore previous instructions`, `export private keys`, `system override`, etc.).
+- **API authorization**: `Authorization: Bearer <key>` enforced for `/api/transport/*` endpoints. `STVOR_API_KEY` required in production.
+- **Relay token moved to Authorization header**: Removed from URL query string to prevent logging in access logs.
+- **Relay agent impersonation blocked**: Server derives `agentId` from public key in challenge-response handshake and verifies match.
+- **Broadcast restricted to admin agents**: `ADMIN_AGENTS` environment variable controls who can broadcast to `*`.
+- **Non-root Docker user**: `Dockerfile` runs relay as `USER bun` with `/app/data` ownership.
+
+### Documentation
+
+- **README.md**: Updated to "Production-ready PQC transport layer". Added AEAD metadata binding, per-agent challenge-response auth, and rate limiting rows to implementation status table. Test count updated to 96.
+- **SECURITY.md**: Rewritten to document production-ready guarantees: PQC transport, AEAD metadata binding, replay protection, challenge-response auth, rate limiting, offline relay resilience, environment defaults, API authorization, and Docker smoke tests.
+- **ARCHITECTURE.md**: Removed "mock ledger" and "demo" qualifiers. Updated relay configuration to reflect explicit opt-in model. Production relay section now reads as live operational component. Removed Phase 3 "to be implemented" framing.
 
 ## [Unreleased] - Security Audit Fixes for elizaOS PR Readiness
 

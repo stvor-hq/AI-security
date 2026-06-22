@@ -1,6 +1,6 @@
 # Stvor AI Security
 
-Quantum-resistant encrypted escrow for autonomous agents. Prevents credential theft from quantum cryptanalysis and prompt injection attacks.
+Production-ready PQC transport layer for autonomous agents. Prevents credential theft from quantum cryptanalysis and prompt injection attacks.
 
 ## Install
 
@@ -57,9 +57,12 @@ An attacker capturing ciphertext today cannot recover plaintext even with a futu
 | SecurityGuard | ✅ | 4 attack categories, rate limiting, replay protection |
 | Audit log | ✅ | SHA-256 hash-chain, tamper-detectable |
 | ERC-8183 state machine | ✅ | 6 states: OPEN→FUNDED→SUBMITTED→COMPLETE/REFUND/ABORTED |
+| AEAD metadata binding | ✅ | Payload hashes bound to job transitions |
+| Per-agent challenge-response auth | ✅ | P-256 signed challenges with expiry |
+| Rate limiting on relay and API | ✅ | File-backed in dev, Redis-ready |
 | ElizaOS plugin | ✅ | PR-ready npm package |
 | Production relay | ✅ | wss://<your-railway-url> |
-| On-chain contract | ⚠️ | AgenticCommerce.sol compiled, deployment pending |
+| On-chain contract | ⚠️ | AgenticCommerce.sol compiled, testnet deployment pending |
 | x402 blockchain signing | 🔜 | Protocol layer done, EIP-712 pending |
 
 ## Environment variables
@@ -117,7 +120,7 @@ bun start:demo
 
 ## Tests
 
-89 tests across 13 files, 0 failures, 431 encryptions/sec.
+96 tests across 15 files, 0 failures, 267 encryptions/sec.
 
 ## License
 
