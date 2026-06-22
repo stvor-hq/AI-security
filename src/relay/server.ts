@@ -47,6 +47,25 @@ const clients = new Map<string, RelayClient>();
 let totalMessages = 0;
 const startTime = Date.now();
 
+const RATE_LIMIT_WINDOW_MS = 1000;
+const RATE_LIMIT_MAX_MESSAGES = 50;
+const agentMessageTimestamps = new Map<string, number[]>();
+
+function isRateLimited(agentId: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (agentMessageTimestamps.get(agentId) ?? []).filter((ts) => ts >= windowStart);
+
+  if (timestamps.length >= RATE_LIMIT_MAX_MESSAGES) {
+    agentMessageTimestamps.set(agentId, timestamps);
+    return true;
+  }
+
+  timestamps.push(now);
+  agentMessageTimestamps.set(agentId, timestamps);
+  return false;
+}
+
 function dataToString(data: RawData): string {
   if (Array.isArray(data)) {
     return Buffer.concat(data).toString('utf8');
@@ -172,6 +191,10 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'message') {
         if (!agentId) {
           ws.send(JSON.stringify({ type: 'error', error: 'Not registered' }));
+          return;
+        }
+        if (isRateLimited(agentId)) {
+          console.warn(`[relay] Rate limit exceeded for agent ${agentId}, dropping message`);
           return;
         }
         if (!msg.to) {

@@ -1,6 +1,7 @@
 import type { IElizaRuntime, Memory, State, HandlerCallback } from './types';
 import { ERC8183StateMachine } from '../state-machine';
 import { MockPqcReputationGate } from '../hooks';
+import { PayloadHasher } from '../lib/pqc';
 import type { ICommerceContext, IErc8183Job, IJobStore } from '../types';
 
 const contexts = new Map<string, ICommerceContext>();
@@ -116,13 +117,26 @@ export const fundJobAction = {
       return;
     }
 
+    if (!amountMatch) {
+      await callback({
+        text: 'Please specify a funding amount (e.g. "Fund job job-abc123 with 1000000")',
+      });
+      return;
+    }
+
+    const fundAmount = BigInt(amountMatch[1]);
+    if (fundAmount <= 0n) {
+      await callback({ text: 'Funding amount must be greater than 0.' });
+      return;
+    }
+
     const ctx = getContext(runtime);
     try {
       const job = await ERC8183StateMachine.fundJob(
         ctx,
         jobIdMatch[0],
         runtime.agentId,
-        BigInt(amountMatch?.[1] ?? '0'),
+        fundAmount,
       );
       await callback({
         text: `🔐 Job funded & secured.\n**Job ID:** ${job.jobId}\n**Status:** ${job.state}\n**Encrypted task delivered to provider via ML-KEM-768 + AES-256-GCM**`,
@@ -165,11 +179,14 @@ export const submitDeliverableAction = {
 
     const ctx = getContext(runtime);
     try {
+      const deliverablePayload = { text: deliverable };
+      const deliverableHash = PayloadHasher.hashPayload(deliverablePayload);
       const job = await ERC8183StateMachine.submitJob(
         ctx,
         jobIdMatch[0],
         runtime.agentId,
-        deliverable,
+        deliverableHash,
+        deliverablePayload,
       );
       await callback({
         text: `📦 Deliverable submitted.\n**Job ID:** ${job.jobId}\n**Status:** ${job.state}\n**Hash recorded on ledger (no plaintext stored)**`,

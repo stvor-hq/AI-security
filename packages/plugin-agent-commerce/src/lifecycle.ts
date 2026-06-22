@@ -78,6 +78,25 @@ export class CommerceTransportBridge implements ICommerceEventListener {
       return;
     }
 
+    const receivedPayload = job.metadata.deliverablePayload;
+    if (!receivedPayload) {
+      await ERC8183StateMachine.abortJob(
+        this.context,
+        job.jobId,
+        `[SECURITY-ALERT] Missing deliverable payload for verification on job ${job.jobId}`,
+      );
+      return;
+    }
+
+    if (!PayloadHasher.verifyHash(receivedPayload, job.deliverableHash as string)) {
+      await ERC8183StateMachine.abortJob(
+        this.context,
+        job.jobId,
+        `[SECURITY-ALERT] HASH_MISMATCH_ALERT for job ${job.jobId}`,
+      );
+      return;
+    }
+
     this.schedulePeerTimeout(
       job.jobId,
       job.providerAgent,

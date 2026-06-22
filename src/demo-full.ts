@@ -6,6 +6,7 @@ import { MockPqcReputationGate } from '../packages/plugin-agent-commerce/src';
 import { PayloadHasher } from './transport/pqc';
 import {
   generateMockPaymentHeader,
+  verifyPaymentHeader,
   x402Middleware,
 } from './x402/index';
 
@@ -87,7 +88,6 @@ async function main(): Promise<void> {
   const startedAt = Date.now();
   let encryptedMessages = 0;
   let escrow: EscrowReservation | null = null;
-  let paymentCheck = { valid: true }; // Default to valid for demo purposes
 
   log(`${CYAN}1. Boot Alice and Bob with distinct KeyStore identities${RESET}`, [
     'Alice = client/payer',
@@ -172,18 +172,20 @@ async function main(): Promise<void> {
 
   log(`${MAGENTA}5. Alice sends x402 Payment Required and reserves escrow${RESET}`, [
     'Request without X-Payment returns HTTP 402',
-    'Valid X-Payment header is base64 JSON with mock ECDSA-style signature',
+    'Valid X-Payment header uses real ECDSA signature via WASM',
     'ERC-8183 fundJob transitions OPEN → FUNDED and reserves funds in mock escrow',
   ]);
 
-  // Note: x402 verification requires real WASM signatures in production mode
-  // For demo purposes, we demonstrate the middleware flow
   const paymentHeader = generateMockPaymentHeader(
     bob.id,
     '0x0000000000000000000000000000000000000000',
     amount.toString(),
     'celo-alfajores',
   );
+  const paymentCheck = verifyPaymentHeader(paymentHeader, amount.toString());
+  if (!paymentCheck.valid) {
+    throw new Error(`x402 payment verification failed: ${paymentCheck.reason}`);
+  }
 
   const paymentUrl = `http://localhost/api/x402/deliverable?jobId=${job.jobId}`;
   const noPayment = x402Middleware(amount.toString(), 'ERC-8183 escrowed PQC job')(

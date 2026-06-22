@@ -72,7 +72,6 @@ export function auditLog(
     // never crash on logging
   }
 }
-
 function getLastEntryHash(): string {
   try {
     const logFile = getLogFile();
@@ -142,3 +141,8 @@ export async function verifyAuditLog(logPath?: string): Promise<VerifyResult> {
 
   return { valid: true, entries: entryCount };
 }
+
+export const AuditLogger = {
+  log: auditLog,
+  verifyAuditLog,
+};

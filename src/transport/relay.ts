@@ -39,6 +39,36 @@ export class WebSocketRelay implements IRelay {
   ) {}
 
   async connect(): Promise<void> {
+    const maxAttempts = 3;
+    const backoffMs = [1000, 2000, 4000];
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        await this.connectOnce();
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts - 1) {
+          const delay = backoffMs[attempt] ?? 4000;
+          console.warn(
+            `[WebSocketRelay] Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError));
+  }
+
+  private connectOnce(): Promise<void> {
+    if (!this.url.startsWith('ws://') && !this.url.startsWith('wss://')) {
+      return Promise.reject(new Error(`Invalid WebSocket relay URL: ${this.url}`));
+    }
+
     return new Promise((resolve, reject) => {
       const params = new URLSearchParams();
       if (this.agentId) params.set('agentId', this.agentId);

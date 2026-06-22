@@ -2,9 +2,10 @@
 // x402 payment protocol implementation for Stvor AI Security agents.
 // Spec: https://x402.org
 
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import { WasmKeyPair } from '@stvor/web3/wasm';
 import { loadContractAddresses } from '../contracts/on-chain.js';
-import { ensureWasm, wasm_ec_verify } from '../transport/pqc.js';
+import { ensureWasm, wasm_ec_sign, wasm_ec_verify } from '../transport/pqc.js';
 
 export interface X402PaymentRequired {
   version: 'x402/1';
@@ -124,30 +125,34 @@ export function verifyPaymentHeader(
 }
 
 export function generateMockPaymentHeader(
-  from: string,
+  _from: string,
   to: string,
   asset: string,
   amountWei: string,
-  network = 'sepolia'
+  network = 'sepolia',
+  signerKeyPair?: WasmKeyPair,
 ): string {
+  ensureWasm();
+  const keyPair = signerKeyPair ?? new WasmKeyPair();
+  const publicKey = keyPair.public_key;
   const nonce = randomBytes(16).toString('hex');
   const expiresAt = Math.floor(Date.now() / 1000) + 300;
 
-  const payload = JSON.stringify({ from, to, asset, amountWei, nonce, expiresAt });
-  const mockSig = '0x' + createHash('sha256').update(payload).digest('hex');
+  const payloadStr = `${publicKey}:${to}:${amountWei}:${nonce}:${expiresAt}:`;
+  const signature = wasm_ec_sign(new TextEncoder().encode(payloadStr), keyPair);
 
   const header: X402PaymentHeader = {
     version: 'x402/1',
     scheme: 'exact',
     network,
     payload: {
-      from,
+      from: publicKey,
       to,
       asset,
       amount: amountWei,
       nonce,
       expiresAt,
-      signature: mockSig,
+      signature,
     },
   };
 

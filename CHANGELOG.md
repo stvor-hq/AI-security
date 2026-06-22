@@ -1,3 +1,30 @@
+## [Final Pre-PR Fixes]
+
+### Section A — Previous Audit Residuals
+
+- **A1 (HIGH-3)**: `onJobSubmitted()` in `lifecycle.ts` now verifies `PayloadHasher.verifyHash(receivedPayload, job.deliverableHash)` before scheduling peer timeout; hash mismatch or missing payload aborts the job immediately.
+- **A2 (MED-3)**: Persistent `FileRateLimitStore` in plugin `security.ts` when `STVOR_PRODUCTION_MODE=true`; in-memory store retained for tests.
+- **A3 (MED-4)**: `STVOR_AGENT_ID` derived deterministically from identity public key via `deriveAgentIdFromPublicKey()`; random ID persisted to `./data/agent-id` when no key is available.
+- **A4 (LOW-1)**: `tests/x402.test.ts` updated for real ECDSA signatures via `wasm_ec_sign()`; middleware test expects valid payment to pass.
+
+### Section B — Production Readiness Gaps
+
+- **B1 (PROD-1)**: Production mode unified in `settings.ts` to match `production.ts`: `STVOR_PRODUCTION_MODE === 'true' || NODE_ENV === 'production'`; removed `STVOR_MODE === 'api'` alternative.
+- **B2 (PROD-2)**: `src/index.ts` throws and exits when transport init fails in production mode instead of falling back to local/mock.
+- **B3 (PROD-3)**: CORS in production defaults to relay origin from `STVOR_RELAY_URL` when `STVOR_CORS_ORIGIN` is unset; refuses to start if neither is available.
+
+### Section C — Final Regression Fixes
+
+- **C1 (CRIT-1)**: `submitDeliverableAction` computes SHA-256 hash via `PayloadHasher.hashPayload()` instead of passing raw user text.
+- **C2 (CRIT-2)**: `generateMockPaymentHeader` uses real `wasm_ec_sign()` signatures; demo and contract scripts verify with `verifyPaymentHeader()`.
+- **C3 (HIGH-2)**: `fundJobAction` requires explicit valid amount; no silent zero funding.
+- **C4 (MED-1)**: `HybridMemoryManager` normalizes agent IDs with `/[^a-z0-9]/g` and `.toLowerCase()` to prevent collision.
+- **C5 (MED-2)**: `WebSocketRelay.connect()` retries up to 3 times with exponential backoff (1s, 2s, 4s).
+- **C6 (MED-3)**: `evaluateJob` decision comparisons use timing-safe `Buffer` equality.
+- **C7 (MED-4)**: Relay server rate limits to 50 incoming messages/second per agent.
+- **C8 (MED-5)**: Transport send/decrypt failures logged to tamper-evident audit log via `AuditLogger.log()`.
+- **C9 (LOW-1)**: Protected `GET /api/audit/verify` endpoint calls `verifyAuditLog()`.
+
 ## [Plugin Autonomy] - Self-Contained Plugin for elizaOS PR
 
 ### Changed

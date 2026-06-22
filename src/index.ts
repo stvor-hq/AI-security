@@ -16,6 +16,7 @@
  */
 
 import { initializeSettings, validateSettings, printSettings } from './core/settings';
+import { isProductionMode } from './core/production';
 import { AgentRuntime } from './core/runtime';
 import type { ICommercePlugin } from '../packages/plugin-agent-commerce/src';
 import { createCommercePlugin } from '../packages/plugin-agent-commerce/src';
@@ -72,9 +73,12 @@ async function initializeTransport(
 
     return transport;
   } catch (error) {
-    console.warn(
-      `[Bootstrap] Transport connection failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (isProductionMode()) {
+      console.error(`[Bootstrap] Transport connection failed in production: ${message}`);
+      throw new Error(`Transport initialization failed: ${message}`);
+    }
+    console.warn(`[Bootstrap] Transport connection failed: ${message}`);
     console.warn(`[Bootstrap] Continuing without transport (local mode)`);
     return transport;
   }

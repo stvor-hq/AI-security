@@ -21,8 +21,9 @@ import { randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { verifyAgentChallenge, type AgentChallenge } from '../agent-identity';
-import { isProductionMode, requireProductionEnv } from '../core/production';
+import { isProductionMode } from '../core/production';
 import { SecurityGuard } from '../core/security';
+import { verifyAuditLog } from '../core/audit-log';
 
 interface StoredAgentChallenge extends AgentChallenge {
   used: boolean;
@@ -122,15 +123,17 @@ export class ApiServer {
   private settings: INodeSettings;
   private transport: StvorTransportManager | null = null;
   private readonly apiKey: string;
-   private readonly appToken: string;
+  private readonly appToken: string;
   private server: ReturnType<typeof Bun.serve> | null = null;
   private readonly agentChallenges: IChallengeStore;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly corsOrigin: string;
 
   constructor(runtime: AgentRuntime, transport?: StvorTransportManager) {
     this.runtime = runtime;
     this.settings = runtime.settings;
     this.transport = transport || null;
+    this.corsOrigin = resolveCorsOrigin(this.settings.relayUrl);
 
     const production = isProductionMode();
     const apiKey = this.settings.apiKey || process.env.STVOR_API_KEY;
@@ -231,7 +234,7 @@ if (path.startsWith('/mcp/')) {
     if (method === 'POST' && path === '/mcp/call') {
       try {
         this.requireTransportAuth(req);
-      } catch (err) {
+      } catch {
         return this._response(401, { error: 'Authorization required for MCP tool calls' });
       }
       const commerce = this.runtime.getPlugin<ICommercePlugin>('agent-commerce');
@@ -569,6 +572,12 @@ if (path.startsWith('/mcp/')) {
       return this._response(200, info);
     }
 
+    if (method === 'GET' && path === '/api/audit/verify') {
+      this.requireTransportAuth(req);
+      const result = await verifyAuditLog();
+      return this._response(200, { success: true, ...result });
+    }
+
     return this._response(404, { error: `Route not found: ${method} ${path}` });
   }
 
@@ -597,15 +606,39 @@ if (path.startsWith('/mcp/')) {
   }
 
   private _response(status: number, body: unknown): Response {
-    const corsOrigin = process.env.STVOR_CORS_ORIGIN ?? '*';
     return new Response(JSON.stringify(body), {
       status,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': corsOrigin,
+        'Access-Control-Allow-Origin': this.corsOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type',
       },
     });
   }
+}
+
+function resolveCorsOrigin(relayUrl: string): string {
+  const explicit = process.env.STVOR_CORS_ORIGIN;
+  if (explicit) {
+    return explicit;
+  }
+
+  if (!isProductionMode()) {
+    return '*';
+  }
+
+  const relay = process.env.STVOR_RELAY_URL ?? relayUrl;
+  if (relay && relay !== 'local' && relay !== 'mock') {
+    try {
+      const parsed = new URL(relay.replace(/^ws/i, 'http'));
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      // fall through
+    }
+  }
+
+  throw new Error(
+    '[Production] STVOR_CORS_ORIGIN must be set, or STVOR_RELAY_URL must be a valid URL to derive CORS origin',
+  );
 }

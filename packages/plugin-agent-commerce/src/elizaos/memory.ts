@@ -20,7 +20,7 @@ export class HybridMemoryManager {
     const memoryDir = getMemoryDir();
     if (!existsSync(memoryDir)) mkdirSync(memoryDir, { recursive: true });
     this.filePath =
-      `${memoryDir}/${agentId.replace(/[^a-z0-9]/gi, '_')}.json`;
+      `${memoryDir}/${agentId.replace(/[^a-z0-9]/g, '').toLowerCase()}.json`;
   }
 
   async store(memory: Memory): Promise<void> {

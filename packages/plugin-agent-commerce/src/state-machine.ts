@@ -1,9 +1,19 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import type { IErc8183Job, ICommerceContext, IJobStore } from './types';
 import { EvaluationDecision, ERC8183JobState } from './types';
 
 export async function clearJobStore(jobStore: IJobStore): Promise<void> {
   await jobStore.clear();
+}
+
+function decisionEquals(
+  decision: EvaluationDecision,
+  expected: EvaluationDecision,
+): boolean {
+  const a = Buffer.from(decision);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 export class ERC8183StateMachine {
@@ -88,6 +98,7 @@ export class ERC8183StateMachine {
     jobId: string,
     providerAgent: string,
     deliverableHash: string,
+    deliverablePayload?: unknown,
   ): Promise<IErc8183Job> {
     if (!/^[0-9a-f]{64}$/i.test(deliverableHash)) {
       throw new Error('deliverableHash must be a valid SHA-256 hex string');
@@ -104,6 +115,9 @@ export class ERC8183StateMachine {
     }
 
     job.deliverableHash = deliverableHash;
+    if (deliverablePayload !== undefined) {
+      job.metadata.deliverablePayload = deliverablePayload;
+    }
     job.state = ERC8183JobState.SUBMITTED;
     job.updatedAt = Date.now();
 
@@ -233,11 +247,11 @@ export class ERC8183StateMachine {
       throw new Error('Only the evaluator agent or client agent can evaluate this job');
     }
 
-    if (decision === EvaluationDecision.ACCEPT) {
+    if (decisionEquals(decision, EvaluationDecision.ACCEPT)) {
       job.state = ERC8183JobState.COMPLETE;
       job.metadata.evaluationReason = reason ?? 'Deliverable accepted by evaluator.';
       job.completedAt = Date.now();
-    } else if (decision === EvaluationDecision.REJECT) {
+    } else if (decisionEquals(decision, EvaluationDecision.REJECT)) {
       job.state = ERC8183JobState.REFUND;
       job.metadata.refundReason = reason ?? 'Deliverable rejected by evaluator.';
       job.completedAt = Date.now();

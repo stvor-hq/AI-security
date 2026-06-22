@@ -49,7 +49,7 @@ export interface ICommercePlugin {
     requiredAmount: bigint,
   ): Promise<IErc8183Job>;
   fundJob(jobId: string, clientAgent: string, fundAmount: bigint): Promise<IErc8183Job>;
-  submitJob(jobId: string, providerAgent: string, deliverableHash: string): Promise<IErc8183Job>;
+  submitJob(jobId: string, providerAgent: string, deliverableHash: string, deliverablePayload?: unknown): Promise<IErc8183Job>;
   evaluateJob(
     jobId: string,
     callerAgent: string,
@@ -85,27 +85,68 @@ export class AgentCommercePlugin implements ICommercePlugin {
     this.eventListeners.push(listener);
   }
 
+  private async notifyJobCreated(job: IErc8183Job): Promise<void> {
+    for (const listener of this.eventListeners) {
+      await listener.onJobCreated(job);
+    }
+  }
+
+  private async notifyJobFunded(job: IErc8183Job): Promise<void> {
+    for (const listener of this.eventListeners) {
+      await listener.onJobFunded(job);
+    }
+  }
+
+  private async notifyJobSubmitted(job: IErc8183Job): Promise<void> {
+    for (const listener of this.eventListeners) {
+      await listener.onJobSubmitted(job);
+    }
+  }
+
+  private async notifyJobEvaluated(job: IErc8183Job, decision: string): Promise<void> {
+    for (const listener of this.eventListeners) {
+      await listener.onJobEvaluated(job, decision);
+    }
+  }
+
   async createJob(
     clientAgent: string,
     providerAgent: string,
     taskDescription: string,
     requiredAmount: bigint,
   ): Promise<IErc8183Job> {
-    return ERC8183StateMachine.createJob(
+    const job = await ERC8183StateMachine.createJob(
       this.context,
       clientAgent,
       providerAgent,
       taskDescription,
       requiredAmount,
     );
+    await this.notifyJobCreated(job);
+    return job;
   }
 
   async fundJob(jobId: string, clientAgent: string, fundAmount: bigint): Promise<IErc8183Job> {
-    return ERC8183StateMachine.fundJob(this.context, jobId, clientAgent, fundAmount);
+    const job = await ERC8183StateMachine.fundJob(this.context, jobId, clientAgent, fundAmount);
+    await this.notifyJobFunded(job);
+    return job;
   }
 
-  async submitJob(jobId: string, providerAgent: string, deliverableHash: string): Promise<IErc8183Job> {
-    return ERC8183StateMachine.submitJob(this.context, jobId, providerAgent, deliverableHash);
+  async submitJob(
+    jobId: string,
+    providerAgent: string,
+    deliverableHash: string,
+    deliverablePayload?: unknown,
+  ): Promise<IErc8183Job> {
+    const job = await ERC8183StateMachine.submitJob(
+      this.context,
+      jobId,
+      providerAgent,
+      deliverableHash,
+      deliverablePayload,
+    );
+    await this.notifyJobSubmitted(job);
+    return job;
   }
 
   async evaluateJob(
@@ -114,13 +155,15 @@ export class AgentCommercePlugin implements ICommercePlugin {
     decision: 'ACCEPT' | 'REJECT' | 'PARTIAL',
     reason?: string,
   ): Promise<IErc8183Job> {
-    return ERC8183StateMachine.evaluateJob(
+    const job = await ERC8183StateMachine.evaluateJob(
       this.context,
       jobId,
       callerAgent,
       decision as EvaluationDecision,
       reason,
     );
+    await this.notifyJobEvaluated(job, decision);
+    return job;
   }
 
   async getJob(jobId: string): Promise<IErc8183Job | null> {

@@ -14,11 +14,12 @@ import { resolve } from 'path';
 import type { IStvorTransport, IStvorMessage, IStvorSession } from './interfaces';
 import { KeyStore } from './key-store';
 
-export { wasm_ec_verify };
+export { wasm_ec_verify, wasm_ec_sign };
 import { MockRelayClient } from './mock-relay';
 import { AgentIdentityService } from '../agent-identity';
 import { WebSocketRelay, type IRelay, type RelayMessage } from './relay';
 import { isProductionMode, requireProductionEnv, assertWssUrl } from '../core/production';
+import { AuditLogger } from '../core/audit-log';
 
 // ─── WASM init (sync, Bun/Node compatible) ───────────────────────────────────
 
@@ -393,8 +394,15 @@ export class StvorTransportManager implements IStvorTransport {
       console.log(`[StvorTransport] Connecting to relay: ${this.relayUrl || '[none]'}`);
 
       const isMockRelay = !this.relayUrl || this.relayUrl === 'mock' || this.relayUrl === 'local';
+      const isWebSocketRelay =
+        this.relayUrl.startsWith('ws://') || this.relayUrl.startsWith('wss://');
 
-      if (isMockRelay) {
+      if (isMockRelay || !isWebSocketRelay) {
+        if (!isMockRelay && !isWebSocketRelay) {
+          console.warn(
+            `[StvorTransport] Relay URL "${this.relayUrl}" is not a WebSocket endpoint; using mock relay.`,
+          );
+        }
         this.enforceMockRelay();
         console.warn(
           '[StvorTransport] Using in-process mock relay. Set STVOR_RELAY_URL for production.',
@@ -450,6 +458,11 @@ console.warn(
         const eventId = `evt-${Date.now()}-${randomBytes(4).toString('hex')}`;
         console.error(
           `[PQC-Transport] Malformed relay payload agent=${this.agentId} eventId=${eventId} timestamp=${new Date().toISOString()}`,
+        );
+        AuditLogger.log(
+          'TRANSPORT_DECRYPT_FAILURE',
+          { eventId, error: 'Malformed relay payload', agentId: this.agentId },
+          this.agentId,
         );
         return;
       }
@@ -587,6 +600,17 @@ console.warn(
       const eventId = `evt-${Date.now()}-${randomBytes(4).toString('hex')}`;
       console.error(
         `[PQC-Transport] All retries failed agent=${this.agentId} eventId=${eventId} timestamp=${new Date().toISOString()} messageId=${messageId} error=${lastError?.message}`,
+      );
+      AuditLogger.log(
+        'TRANSPORT_SEND_FAILURE',
+        {
+          eventId,
+          messageId,
+          recipientId,
+          error: lastError?.message ?? 'Unknown send failure',
+        },
+        this.agentId,
+        jobId,
       );
       for (const handler of this.errorHandlers) {
         handler(lastError ?? new Error('Unknown send failure'), messageId, recipientId);

@@ -165,6 +165,7 @@ describe('Stvor AI Security E2E Commerce Flow', () => {
       sharedJobStore,
       sharedReputationGate,
     );
+    expect(charlie.commerce.getContext().jobStore).toBe(sharedJobStore);
 
     // Register peer public keys for PQC encryption
     aliceTransport.registerPeerPublicKey('bob_provider', bobTransport.getKeyPair());
@@ -514,6 +515,7 @@ describe('Stvor AI Security E2E Commerce Flow', () => {
       jobId,
       'bob_provider',
       deliverableHash,
+      deliverable,
     );
 
     console.log(`  Job State: ${submittedJob.state}`);
@@ -557,6 +559,7 @@ describe('Stvor AI Security E2E Commerce Flow', () => {
       jobId,
       'bob_provider',
       deliverableHash,
+      deliverable,
     );
 
     // Evaluate (as alice, the client who can evaluate)
@@ -609,6 +612,7 @@ describe('Stvor AI Security E2E Commerce Flow', () => {
       jobId,
       'bob_provider',
       hasher.hashPayload(badDeliverable),
+      badDeliverable,
     );
 
     // Reject (as alice, the client who can evaluate)
@@ -740,10 +744,12 @@ describe('Stvor AI Security E2E Commerce Flow', () => {
 
     // 3. Submit
     const submitStart = Date.now();
+    const lifecycleDeliverable = { data: 'work completed' };
     await bob.commerce.submitJob(
       job.jobId,
       'bob_provider',
-      hasher.hashPayload({ data: 'work completed' }),
+      hasher.hashPayload(lifecycleDeliverable),
+      lifecycleDeliverable,
     );
     const submitTime = Date.now() - submitStart;
 
